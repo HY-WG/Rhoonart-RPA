@@ -29,6 +29,10 @@ SHEET_CHANNELS = "Channels"
 SHEET_VIDEOS = "Videos"
 SHEET_LEADS = "Leads"
 SHEET_RUN_LOG = "Run_Log"
+SHEET_TOP10 = "Top10_Entertainment"
+
+# Top10 crawl settings
+TOP10_REGION_CODE = os.getenv("TOP10_REGION_CODE", "KR")   # KR = 한국
 
 # Email regex
 EMAIL_REGEX = r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
