@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/protect-sensitive-files.py",
+            "statusMessage": "Checking file protection..."
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/log-config-changes.py",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
