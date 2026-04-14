@@ -10,7 +10,7 @@ from datetime import datetime
 
 try:
     data = json.load(sys.stdin)
-    file_path = data.get('file_path', 'unknown')
+    file_path = data.get('file_path', 'unknown').replace('\n', ' ').replace('\r', ' ')
 except Exception:
     file_path = 'unknown'
 
