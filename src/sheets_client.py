@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from config import (
     GOOGLE_CREDENTIALS_FILE, GOOGLE_SPREADSHEET_ID,
-    SHEET_CHANNELS, SHEET_VIDEOS, SHEET_LEADS, SHEET_RUN_LOG,
+    SHEET_CHANNELS, SHEET_VIDEOS, SHEET_LEADS, SHEET_RUN_LOG, SHEET_TOP10,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,14 @@ RUN_LOG_HEADERS = [
     "leads_found", "quota_used", "status", "notes",
 ]
 
+TOP10_HEADERS = [
+    "rank", "video_id", "title", "channel_title",
+    "published_at", "view_count", "like_count", "comment_count",
+    "duration", "category_name", "region",
+    "video_url", "thumbnail_high",
+    "fetched_at",
+]
+
 
 class SheetsClient:
     def __init__(self):
@@ -73,6 +81,7 @@ class SheetsClient:
             (SHEET_VIDEOS, VIDEO_HEADERS),
             (SHEET_LEADS, LEAD_HEADERS),
             (SHEET_RUN_LOG, RUN_LOG_HEADERS),
+            (SHEET_TOP10, TOP10_HEADERS),
         ]:
             if name not in existing:
                 ws = self.spreadsheet.add_worksheet(title=name, rows=5000, cols=len(headers))
@@ -161,3 +170,26 @@ class SheetsClient:
             [str(log.get(h) or "") for h in RUN_LOG_HEADERS],
             value_input_option="RAW",
         )
+
+    def write_top10(self, videos: list[dict]) -> int:
+        """Overwrite Top10_Entertainment sheet with today's ranked list.
+
+        The sheet is cleared first so each run reflects the latest snapshot.
+        Returns the number of rows written.
+        """
+        ws = self.spreadsheet.worksheet(SHEET_TOP10)
+        # Clear existing data below header
+        ws.clear()
+        ws.append_row(TOP10_HEADERS, value_input_option="RAW")
+        self._format_header(ws)
+
+        now = datetime.now(timezone.utc).isoformat()
+        rows = []
+        for v in videos:
+            v["fetched_at"] = now
+            rows.append([str(v.get(h) or "") for h in TOP10_HEADERS])
+
+        if rows:
+            ws.append_rows(rows, value_input_option="RAW")
+        logger.info(f"Wrote {len(rows)} rows to {SHEET_TOP10}")
+        return len(rows)
