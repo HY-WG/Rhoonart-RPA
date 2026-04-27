@@ -1,5 +1,36 @@
+# Google APIs
 google-api-python-client==2.120.0
 google-auth==2.29.0
 google-auth-httplib2==0.2.0
 gspread==6.1.2
+
+# Environment
 python-dotenv==1.0.1
+
+# Slack
+slack-sdk==3.27.1
+
+# AWS SDK
+boto3==1.34.0
+
+# Spreadsheet export
+openpyxl==3.1.2
+
+# HTTP client
+requests==2.31.0
+
+# Timezone handling
+pytz==2024.1
+
+# Backoffice API
+fastapi==0.115.12
+httpx==0.28.1
+
+# Test
+pytest==8.3.5
+
+# Notion API (C-3 가이드라인 페이지 생성)
+notion-client==2.2.1
+
+# Optional future migration target
+# supabase==2.4.0
