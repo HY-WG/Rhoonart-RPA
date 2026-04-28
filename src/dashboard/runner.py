@@ -528,7 +528,7 @@ class IntegrationTaskService:
                 IntegrationTaskSpec(
                     task_id="D-2",
                     title="D-2 저작권 소명 공문 요청",
-                    tab_group="homepage_auto",
+                    tab_group="ops_admin",
                     description=(
                         "**현행:** 카카오톡으로 저작권 소명 인입시, 관리자가 확인하여 수동 메일 작성 및 조취하고 있음.\n\n"
                         "**구현 내용:** 웹에 “저작권 소명 요청” 서비스 탭을 만들어, 관리자가 웹에서 소명 요청 리스트를 확인 할 수 있도록함.\n"

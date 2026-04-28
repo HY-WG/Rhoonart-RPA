@@ -17,9 +17,9 @@ const TAB_SUBTITLE = {
 };
 
 const CHANNEL_ACTION_LABELS = {
-  "work-approval": "작품사용신청 승인",
-  coupon: "쿠폰 신청",
-  relief: "저작권 소명 신청",
+  "work-approval": "작품사용신청 승인",   // → A-2
+  coupon:          "쿠폰 신청",           // → C-4
+  relief:          "저작권 소명 신청",    // → D-2
 };
 
 // ── 상태 ─────────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ function renderVideoCard(video) {
       <button class="btn btn--ghost channel-action-btn" type="button"
         data-action-type="coupon" data-video-id="${esc(video.video_id)}">쿠폰 신청</button>
       <button class="btn btn--soft channel-action-btn" type="button"
-        data-action-type="relief" data-video-id="${esc(video.video_id)}">저작권 소명</button>
+        data-action-type="relief" data-video-id="${esc(video.video_id)}">저작권 소명 신청</button>
     </div>
   </div>
 </article>`;
