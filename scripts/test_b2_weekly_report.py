@@ -157,7 +157,7 @@ else:
         content_sh = gc.open_by_key(CONTENT_SHEET_ID)
         TAB_CONTENT = os.environ.get("TAB_CONTENT", "콘텐츠 목록")
         TAB_STATS   = os.environ.get("TAB_STATS", "성과 데이터")
-        TAB_RIGHTS  = os.environ.get("TAB_RIGHTS", "작품 관리")
+        TAB_RIGHTS  = os.environ.get("TAB_RIGHTS", "A3_작품 관리의 사본")
 
         try:
             perf_repo = SheetPerformanceRepository(
