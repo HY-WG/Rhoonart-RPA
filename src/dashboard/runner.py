@@ -12,7 +12,7 @@ from src.config import settings
 from src.core.repositories.supabase_integration_dashboard_repository import (
     SupabaseIntegrationDashboardRepository,
 )
-from src.handlers.a2_work_approval import parse_slack_message
+from src.handlers.a2_work_approval import parse_manual_request
 from src.handlers.c4_coupon_notification import is_coupon_request
 
 from .in_memory_repository import InMemoryIntegrationDashboardRepository
@@ -70,44 +70,38 @@ def _raise_for_error_result(result: dict[str, Any]) -> None:
 
 
 def _adapter_a2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
-    slack_text = (
-        f'\ucc44\ub110: "{run.payload.get("channel_name", "Test Channel")}" '
-        f'\uc2e0\uaddc \uc601\uc0c1 \uc0ac\uc6a9 \uc694\uccad\uc774 \uc788\uc2b5\ub2c8\ub2e4.\n'
-        f'{run.payload.get("work_title", "Test Work")}'
+    channel_name, work_title = parse_manual_request(
+        str(run.payload.get("channel_name", "Test Channel")),
+        str(run.payload.get("work_title", "Test Work")),
     )
+    proposed_endpoint = "/work-approvals/request"
+    proposed_url = f"https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api{proposed_endpoint}"
+
     if run.execution_mode == ExecutionMode.DRY_RUN:
-        channel_name, work_title = parse_slack_message(slack_text)
-        log("Validated Slack parsing pattern for A-2 without changing Drive permissions or sending mail.")
+        log("A-2는 현재 manuals-api 실제 endpoint 대기 중인 stub입니다. channel_name/work_title 입력값만 검증합니다.")
         return {
             "execution_mode": run.execution_mode.value,
             "channel_name": channel_name,
             "work_title": work_title,
-            "preview_only": True,
+            "stub_only": True,
+            "manuals_api_base_url": "https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api",
+            "proposed_endpoint": proposed_endpoint,
+            "proposed_url": proposed_url,
+            "next_step": "개발팀 endpoint 명세 수령 후 채널 보유 작품 조회 및 권한 부여 플로우 연결",
         }
 
-    thread_ts = str(run.payload.get("slack_message_ts", "")).strip()
-    if not thread_ts or thread_ts.startswith("dashboard-a2-"):
-        raise ValueError(
-            "A-2 real-run requires a real Slack message ts in payload.slack_message_ts."
-        )
-
-    handler = importlib.import_module("lambda.a2_work_approval_handler").handler
-    event = {
-        "body": json.dumps(
-            {
-                "type": "event_callback",
-                "event": {
-                    "type": "message",
-                    "channel": run.payload.get("slack_channel_id", "C_HTTP_TRIGGER"),
-                    "ts": thread_ts,
-                    "text": slack_text,
-                },
-            },
-            ensure_ascii=False,
-        )
+    log("A-2 real-run도 현재는 stub only입니다. 실제 endpoint/작품 조회 API가 없어 외부 부작용 없이 종료합니다.")
+    return {
+        "execution_mode": run.execution_mode.value,
+        "channel_name": channel_name,
+        "work_title": work_title,
+        "stub_only": True,
+        "manuals_api_base_url": "https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api",
+        "proposed_endpoint": proposed_endpoint,
+        "proposed_url": proposed_url,
+        "implemented": False,
+        "reason": "manuals-api 실제 endpoint 및 채널 보유 작품 조회 API 명세 대기",
     }
-    log(f"Dispatching real A-2 approval flow through the lambda entrypoint with thread_ts={thread_ts}.")
-    return _normalize_result(handler(event, None))
 
 
 def _adapter_a3(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
@@ -115,39 +109,39 @@ def _adapter_a3(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
     mode = run.payload.get("mode", "confirm")
     if run.execution_mode == ExecutionMode.DRY_RUN:
         mode = "confirm"
-        log("Dry run selected; forcing A-3 into confirm mode.")
+        log("A-3 dry-run은 confirm 모드로 고정합니다.")
     else:
-        log(f"Running A-3 in mode={mode}.")
+        log(f"A-3를 mode={mode}로 실행합니다.")
     return _normalize_result(handler({"mode": mode}, None))
 
 
 def _adapter_b2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
     if run.execution_mode == ExecutionMode.DRY_RUN:
-        log("B-2 does not support a side-effect-free dry run yet; returning a preview summary.")
+        log("B-2는 아직 완전한 무해 dry-run을 지원하지 않아 설정 미리보기만 반환합니다.")
         return _preview_only(run, "B-2 currently requires a real crawl/report cycle for full validation.")
 
     handler = importlib.import_module("lambda.b2_weekly_report_handler").handler
-    log("Running B-2 weekly report in real mode.")
+    log("B-2 네이버 클립 성과보고를 real-run으로 실행합니다.")
     return _normalize_result(handler({"source": run.payload.get("source", "dashboard")}, None))
 
 
 def _adapter_c1(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
     if run.execution_mode == ExecutionMode.DRY_RUN:
-        log("C-1 dry run is a configuration preview because the current handler always writes leads.")
+        log("C-1 dry-run은 현재 설정 미리보기만 제공합니다. 실제 실행 시 리드 시트에 기록됩니다.")
         return _preview_only(run, "C-1 lead discovery still writes to the lead repository when executed.")
 
     handler = importlib.import_module("lambda.c1_lead_filter_handler").handler
-    log("Running C-1 lead discovery in real mode.")
+    log("C-1 리드 발굴을 real-run으로 실행합니다.")
     return _normalize_result(handler(run.payload, None))
 
 
 def _adapter_c2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
     if run.execution_mode == ExecutionMode.DRY_RUN:
-        log("C-2 dry run is limited to payload preview because the current handler sends email.")
+        log("C-2 dry-run은 payload 미리보기만 제공합니다. 현재 핸들러는 실제 발송형입니다.")
         return _preview_only(run, "C-2 currently has no native no-send preview mode.")
 
     handler = importlib.import_module("lambda.c2_cold_email_handler").handler
-    log("Running C-2 cold email flow in real mode.")
+    log("C-2 콜드메일 플로우를 real-run으로 실행합니다.")
     return _normalize_result(handler(run.payload, None))
 
 
@@ -155,14 +149,14 @@ def _adapter_c3(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
     handler = importlib.import_module("lambda.c3_work_register_handler").handler
     payload = dict(run.payload)
     payload["dry_run"] = run.execution_mode == ExecutionMode.DRY_RUN
-    log(f"Running C-3 with dry_run={payload['dry_run']}.")
+    log(f"C-3를 dry_run={payload['dry_run']}로 실행합니다.")
     return _normalize_result(handler(payload, None))
 
 
 def _adapter_c4(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
     if run.execution_mode == ExecutionMode.DRY_RUN:
         is_match = is_coupon_request(run.payload.get("text", ""))
-        log("Validated coupon keyword detection without appending sheets rows or sending notifications.")
+        log("C-4 쿠폰 키워드 탐지만 검증했습니다. 시트 추가나 알림 발송은 하지 않았습니다.")
         return {
             "execution_mode": run.execution_mode.value,
             "preview_only": True,
@@ -171,7 +165,7 @@ def _adapter_c4(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
         }
 
     handler = importlib.import_module("lambda.c4_coupon_notification_handler").handler
-    log("Running C-4 coupon notification flow in real mode.")
+    log("C-4 쿠폰 알림 플로우를 real-run으로 실행합니다.")
     return _normalize_result(handler(run.payload, None))
 
 
@@ -190,7 +184,7 @@ def _adapter_d2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
     )
     if run.execution_mode == ExecutionMode.DRY_RUN:
         rights_holders = sorted({item["rights_holder_name"] for item in items})
-        log("Prepared D-2 preview without persisting requests or sending rights-holder mail.")
+        log("D-2 미리보기만 생성했습니다. 요청 저장이나 메일 발송은 하지 않았습니다.")
         return {
             "execution_mode": run.execution_mode.value,
             "preview_only": True,
@@ -201,7 +195,7 @@ def _adapter_d2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
             "auto_send_mails": bool(run.payload.get("auto_send_mails", False)),
         }
 
-    log("Creating relief request through the D-2 service.")
+    log("D-2 저작권 소명 요청을 생성합니다.")
     request = service.create_request(
         requester_channel_name=run.payload.get("requester_channel_name", "Test Channel"),
         requester_email=run.payload.get("requester_email", "creator@example.com"),
@@ -215,7 +209,7 @@ def _adapter_d2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
         "requester_channel_name": request.requester_channel_name,
     }
     if run.payload.get("auto_send_mails"):
-        log("auto_send_mails=true, dispatching rights-holder mail.")
+        log("auto_send_mails=true 이므로 권리사 메일을 발송합니다.")
         send_result = service.send_rights_holder_mails(request.request_id)
         result["mail_result"] = {
             "attempted": send_result.attempted,
@@ -229,7 +223,7 @@ def _adapter_d2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
 def _adapter_d3(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
     handler = importlib.import_module("lambda.d3_kakao_creator_onboarding_handler").handler
     dry_run = run.execution_mode == ExecutionMode.DRY_RUN
-    log(f"Running D-3 with dry_run={dry_run}.")
+    log(f"D-3를 dry_run={dry_run}로 실행합니다.")
     return _normalize_result(handler({"dry_run": dry_run}, None))
 
 
@@ -298,10 +292,12 @@ class IntegrationTaskService:
             "tasks": [
                 {
                     "task_id": spec.task_id,
+                    "title": spec.title,
                     "targets": spec.targets,
                     "trigger_mode": spec.trigger_mode,
                     "requires_approval": spec.requires_approval,
                     "supports_dry_run": spec.supports_dry_run,
+                    "sheet_links": spec.sheet_links,
                 }
                 for spec in self.list_task_specs()
             ],
@@ -312,10 +308,7 @@ class IntegrationTaskService:
         if run is None:
             return
         self._repo.update_run_status(run_id, IntegrationRunStatus.RUNNING)
-        self._repo.append_log(
-            run_id,
-            f"[{run.task_id}] execution started in mode={run.execution_mode.value}",
-        )
+        self._repo.append_log(run_id, f"[{run.task_id}] execution started in mode={run.execution_mode.value}")
 
         def _log(message: str) -> None:
             self._repo.append_log(run_id, message)
@@ -324,125 +317,219 @@ class IntegrationTaskService:
             result = adapter(run, _log)
             _raise_for_error_result(result)
             self._repo.append_log(run_id, f"[{run.task_id}] execution finished successfully")
-            self._repo.update_run_status(
-                run_id,
-                IntegrationRunStatus.SUCCEEDED,
-                result=result,
-            )
+            self._repo.update_run_status(run_id, IntegrationRunStatus.SUCCEEDED, result=result)
         except Exception as exc:
             self._repo.append_log(run_id, f"[{run.task_id}] execution failed: {exc}")
-            self._repo.update_run_status(
-                run_id,
-                IntegrationRunStatus.FAILED,
-                error=str(exc),
-            )
+            self._repo.update_run_status(run_id, IntegrationRunStatus.FAILED, error=str(exc))
 
     def _build_registry(self) -> dict[str, tuple[IntegrationTaskSpec, Adapter]]:
+        def _sheet_url(sheet_id: str) -> str:
+            return f"https://docs.google.com/spreadsheets/d/{sheet_id}" if sheet_id else ""
+
+        def _drive_url(folder_id: str) -> str:
+            return f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else ""
+
+        log_url = _sheet_url(settings.LOG_SHEET_ID)
+
         return {
             "A-2": (
                 IntegrationTaskSpec(
                     task_id="A-2",
-                    title="A-2 Work Approval",
-                    description="Validate or execute the work-approval flow from a Slack-style request. Real thread reply verification needs an actual Slack message ts.",
+                    title="A-2 작품사용신청 승인",
+                    tab_group="homepage_auto",
+                    description=(
+                        "**현행:** Slack `#작품사용신청-알림` 채널에 크리에이터의 작품 사용 요청 메시지가 수신되면, 담당자가 수동으로 "
+                        "Google Drive 권한 부여 및 승인 이메일을 작성·발송.\n\n"
+                        "**구현내용:** 채널이 홈페이지에서 \"소유한 영상\" 중, \"작품사용승인\" 신청 (실제 endpoint 필요) → "
+                        "채널명으로 크리에이터 이메일 조회 → Google Drive 파일에 Viewer 권한 자동 부여 → 승인 이메일 자동 발송."
+                    ),
                     default_payload={
                         "channel_name": "Test Channel",
                         "work_title": "Test Work",
-                        "slack_channel_id": settings.A2_TEST_SLACK_CHANNEL_ID,
-                        "slack_message_ts": settings.A2_TEST_SLACK_THREAD_TS or "",
+                        "manuals_api_base_url": "https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api",
+                        "proposed_endpoint": "/work-approvals/request",
                     },
-                    targets=["Google Sheets", "Google Drive", "Email", "Slack"],
-                    real_run_warning="Drive permissions and approval email delivery will run for real. For Slack thread reply testing, replace slack_message_ts with a real Slack message ts such as 1777346971.414089.",
+                    targets=["Manuals API (stub)", "Google Sheets", "Google Drive", "Email"],
+                    real_run_warning=(
+                        "현재 A-2는 stub only 상태입니다.\n"
+                        "manuals-api 실제 endpoint와 채널 보유 작품 조회 API 명세를 받은 뒤에만 권한 부여/메일 발송을 연결해야 합니다."
+                    ),
+                    sheet_links={
+                        "크리에이터 시트": _sheet_url(settings.CREATOR_SHEET_ID),
+                        "Drive 폴더": _drive_url(settings.DRIVE_FOLDER_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_a2,
             ),
             "A-3": (
                 IntegrationTaskSpec(
                     task_id="A-3",
-                    title="A-3 Naver Clip Monthly",
-                    description="Run the monthly confirm or send flow for Naver Clip requests.",
+                    title="A-3 네이버 클립 월별 집계",
+                    tab_group="ops_admin",
+                    description=(
+                        "**현행:** 담당자가 구글폼 응답을 수동 확인 후 네이버 제출용 엑셀 파일을 직접 작성하여 이메일 발송.\n\n"
+                        "**구현내용:** 정보 인입 구글 폼에서 홈페이지로 변경. 매월 말일 담당자에게 Slack으로 확인 요청 → "
+                        "매월 1일 전월 구글폼 응답을 자동 취합하여 네이버 제출용 엑셀 파일을 생성하고 담당자에게 이메일 발송.\n\n"
+                        "⇒ 전월 말일 담당자 확인 요청 알림. 이상 없을 시 그대로 메일 자동 전송."
+                    ),
                     default_payload={"mode": "confirm"},
                     targets=["Google Sheets", "Slack", "Email"],
-                    real_run_warning="Using send mode will deliver the real monthly attachment email.",
+                    real_run_warning="send 모드로 실행하면 담당자에게 실제 월별 집계 메일이 발송됩니다.",
+                    sheet_links={
+                        "신청자 입력 시트": _sheet_url(settings.NAVER_APPLICANT_SHEET_ID),
+                        "제출용 엑셀 원본 시트": _sheet_url(settings.NAVER_EXCEL_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_a3,
             ),
             "B-2": (
                 IntegrationTaskSpec(
                     task_id="B-2",
-                    title="B-2 Weekly Report",
-                    description="Run or preview the weekly performance report workflow.",
+                    title="B-2 네이버 클립 성과보고",
+                    tab_group="ops_admin",
+                    description=(
+                        "**현행:** Octoparse 크롤링 후 일일이 수동 등록.\n\n"
+                        "**구현내용:** Naver Clip GraphQL API로 해시태그별 클립 조회수를 자동 수집 → Google Sheets 갱신 → "
+                        "권리사별 Looker Studio 대시보드 링크를 이메일 자동 발송."
+                    ),
                     default_payload={"source": "dashboard"},
                     targets=["Google Sheets", "Email", "Slack"],
-                    real_run_warning="Running this task may aggregate data and send weekly reports.",
+                    real_run_warning="성과 집계와 권리사 메일 발송이 실제로 수행됩니다.",
+                    sheet_links={
+                        "콘텐츠 시트": _sheet_url(settings.CONTENT_SHEET_ID),
+                        "작품 관리 시트": _sheet_url(settings.CONTENT_SHEET_ID),
+                        "성과 시트": _sheet_url(settings.PERFORMANCE_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_b2,
             ),
             "C-1": (
                 IntegrationTaskSpec(
                     task_id="C-1",
-                    title="C-1 Lead Discovery",
-                    description="Control YouTube Shorts lead discovery and sheet upserts.",
+                    title="C-1 리드 발굴",
+                    tab_group="ops_admin",
+                    description=(
+                        "**트리거:** 신규 작품 등록 후 7일(2주) 이내 해당 작품의 '작품사용신청'이 5개 이하일 시, "
+                        "시스템이 '채널 부족 — 리드발굴 필요'로 판단하여 자동 실행.\n\n"
+                        "**Slack 알림 포맷:**\n"
+                        "{작품이름}의 이용 채널 수가 적어 리드발굴을 진행했습니다.\n"
+                        "리드발굴 {TIMESTAMP} 진행 / 대표 TOP3 채널 / 자세한 정보는 시트 확인\n\n"
+                        "**구현내용:** YouTube Data API v3 기반 2-Layer 구조로 드라마·영화 클립 채널을 자동 발굴·분류. "
+                        "A/B/B? 등급 채널을 리드 시트에 upsert 후 Slack 알림 발송."
+                    ),
                     default_payload={"_trigger_source": "dashboard"},
                     targets=["YouTube API", "Google Sheets", "Slack"],
-                    real_run_warning="Running this task performs actual lead upserts into the lead sheet.",
+                    real_run_warning="리드 시트에 실제 채널 데이터가 upsert됩니다.",
+                    sheet_links={
+                        "시드 채널 시트": _sheet_url(settings.SEED_CHANNEL_SHEET_ID),
+                        "리드 시트": _sheet_url(settings.LEAD_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_c1,
             ),
             "C-2": (
                 IntegrationTaskSpec(
                     task_id="C-2",
-                    title="C-2 Cold Email",
-                    description="Control the filtered lead cold-email workflow.",
-                    default_payload={"batch_size": 5, "min_monthly_views": 0},
+                    title="C-2 콜드메일 발송",
+                    tab_group="ops_admin",
+                    description=(
+                        "**현행:** 구글 앱스크립트를 통해 대량 개인화 메일 발송중.\n\n"
+                        "**구현내용:** 리드 시트에서 이메일 미발송 채널을 조회 → 채널 특성(장르·월간 조회수)에 맞게 개인화된 "
+                        "콜드메일 생성 → AWS SES/SMTP 발송 → 발송 상태 시트 갱신."
+                    ),
+                    default_payload={"batch_size": 5, "min_monthly_views": 0, "dry_run": True},
                     targets=["Google Sheets", "Email", "Slack"],
                     requires_approval=True,
-                    real_run_warning="Running this task sends real outbound cold email.",
+                    real_run_warning=(
+                        "기본 payload는 dry_run=true 입니다.\n"
+                        "실제 메일 발송은 승인 체크 + payload.dry_run=false 로 바꾼 경우에만 진행해야 합니다."
+                    ),
+                    sheet_links={
+                        "리드 시트": _sheet_url(settings.LEAD_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_c2,
             ),
             "C-3": (
                 IntegrationTaskSpec(
                     task_id="C-3",
-                    title="C-3 Work Registration",
-                    description="Control the work registration flow across Admin API and Notion.",
+                    title="C-3 작품 등록",
+                    tab_group="ops_admin",
+                    description=(
+                        "대시보드에서 작품 제목 기준 웹서치 결과를 검토하고, 필드 값에 맞는 작품 정보를 입력해 등록합니다.\n\n"
+                        "작품 제목, 권리사, 공개년도, 감독, 출연진, 플랫폼 URL, 트레일러 URL, 소스 다운로드 URL과 "
+                        "가이드라인 항목까지 한 번에 확인하고 수정할 수 있습니다."
+                    ),
                     default_payload={
-                        "work_title": "Test Work",
-                        "rights_holder_name": "Test Rights Holder",
-                        "release_year": 2025,
-                        "description": "Integration dashboard registration test",
-                        "director": "Test Director",
-                        "cast": "Actor A, Actor B",
-                        "genre": "Drama",
-                        "video_type": "Drama",
-                        "country": "Korea",
-                        "platforms": ["wavve"],
+                        "work_title": "21세기 대군부인",
+                        "rights_holder_name": "웨이브",
+                        "release_year": 2022,
+                        "description": "작품 소개",
+                        "director": "감독명",
+                        "cast": "배우1, 배우2",
+                        "genre": "드라마",
+                        "video_type": "드라마",
+                        "country": "한국",
+                        "platforms": ["웨이브"],
+                        "platform_video_url": "https://...",
+                        "trailer_url": "https://...",
+                        "source_download_url": "https://...",
+                        "guideline": {
+                            "source_provided_date": "2026-05-01",
+                            "upload_available_date": "2026-05-10",
+                            "usage_notes": "주의사항 내용",
+                            "format_guide": "#신병 #드라마클립 문구 포함 필수",
+                            "other_platforms": "네이버 클립 가능 / 카카오 숏폼 불가",
+                            "logo_subtitle_provided": True,
+                            "review_required": False,
+                        },
                     },
                     targets=["Admin API", "Notion", "Slack"],
                     requires_approval=True,
-                    real_run_warning="Running this task may create live work metadata and guidelines.",
+                    real_run_warning="작품 메타데이터 등록과 노션 가이드 생성이 실제로 시도됩니다.",
+                    sheet_links={"로그시트": log_url},
                 ),
                 _adapter_c3,
             ),
             "C-4": (
                 IntegrationTaskSpec(
                     task_id="C-4",
-                    title="C-4 Coupon Notification",
-                    description="Control the coupon notification flow from Slack or completion events.",
+                    title="C-4 쿠폰 알림",
+                    tab_group="homepage_auto",
+                    description=(
+                        "**현행:** 크리에이터로 부터 카카오톡으로 쿠폰 신청 인입이 들어오면 관리자가 발급.\n\n"
+                        "**구현 내용:** 크리에이터 측에서 웹에서 쿠폰 발급 요청 > 웹에서 바로 발급 되도록 진행."
+                    ),
                     default_payload={
                         "source": "slack",
                         "creator_name": "Test Creator",
-                        "text": "\uc218\uc775 100% \ucfe0\ud3f0 \uc694\uccad\ud569\ub2c8\ub2e4.",
+                        "text": "수익 100% 쿠폰 요청입니다.",
                     },
                     targets=["Google Sheets", "Slack", "Kakao (stub)"],
-                    real_run_warning="Running this task writes the coupon sheet row and sends a Slack DM.",
+                    real_run_warning="쿠폰 요청 시트 추가와 Slack 알림이 실제로 수행됩니다.",
+                    sheet_links={
+                        "쿠폰 요청 시트": _sheet_url(settings.COUPON_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_c4,
             ),
             "D-2": (
                 IntegrationTaskSpec(
                     task_id="D-2",
-                    title="D-2 Relief Request Backoffice",
-                    description="Preview or execute the relief-request creation and rights-holder mail flow.",
+                    title="D-2 저작권 소명 공문 요청",
+                    tab_group="homepage_auto",
+                    description=(
+                        "**현행:** 카카오톡으로 저작권 소명 인입시, 관리자가 확인하여 수동 메일 작성 및 조취하고 있음.\n\n"
+                        "**구현 내용:** 웹에 “저작권 소명 요청” 서비스 탭을 만들어, 관리자가 웹에서 소명 요청 리스트를 확인 할 수 있도록함.\n"
+                        "메일 내용 또한 템플렛으로 지정하여 권리사 측으로 메일 송신.\n"
+                        "회신 여부를 확인하여 완료 유무확인 및 공문 발송, 드라이브 업로드 자동화."
+                    ),
                     default_payload={
                         "requester_channel_name": "Test Channel",
                         "requester_email": "creator@example.com",
@@ -459,17 +546,33 @@ class IntegrationTaskService:
                     },
                     targets=["Relief Request Service", "Email", "Slack"],
                     requires_approval=True,
-                    real_run_warning="If auto_send_mails=true, rights-holder email will be delivered for real.",
+                    real_run_warning="auto_send_mails=true이면 권리사 메일이 실제로 발송됩니다.",
+                    sheet_links={
+                        "권리사 시트": _sheet_url(settings.RIGHTS_HOLDER_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_d2,
             ),
             "D-3": (
                 IntegrationTaskSpec(
                     task_id="D-3",
-                    title="D-3 Kakao Creator Onboarding",
-                    description="Control the Google Form to final-sheet onboarding workflow.",
+                    title="D-3 카카오 크리에이터 온보딩",
+                    tab_group="homepage_auto",
+                    description=(
+                        "**현행:** 카카오 오리지널 크리에이터 신규 입점 시 담당자가 구글폼 응답을 수동 취합하여 시트 입력 → "
+                        "권한 요청 → 온보딩 안내 발송의 전 과정을 수동 처리.\n\n"
+                        "**구현 내용:** 구글폼 응답을 '최종 리스트' 시트에 자동 입력하고 구독자 수 기반 규모 카테고리를 자동 계산 "
+                        "(STEP 1 완료). STEP 2~5는 미결 사항 해소 후 단계별 구현 예정. "
+                        "(단톡방 초대 및 월간 정기 정산)"
+                    ),
                     default_payload={},
                     targets=["Google Sheets", "Drive"],
+                    sheet_links={
+                        "카카오 입력 시트": _sheet_url(settings.KAKAO_FORM_SHEET_ID),
+                        "최종 리스트 시트": _sheet_url(settings.KAKAO_OUTPUT_SHEET_ID),
+                        "로그시트": log_url,
+                    },
                 ),
                 _adapter_d3,
             ),
@@ -490,4 +593,4 @@ def build_integration_dashboard_repository() -> IIntegrationDashboardRepository:
 
 
 def build_integration_task_service() -> IntegrationTaskService:
-    return IntegrationTaskService()
+    return IntegrationTaskService(repo=build_integration_dashboard_repository())
