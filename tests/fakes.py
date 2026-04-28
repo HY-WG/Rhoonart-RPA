@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from src.models import NaverClipApplicant
+
 
 class FakeNotifier:
     def __init__(self, *, send_result: bool = True) -> None:
@@ -76,13 +78,26 @@ class FakeLeadRepo:
 
 
 class FakeFormRepo:
-    def __init__(self, applicants: list[dict[str, Any]] | None = None) -> None:
+    def __init__(self, applicants: list[NaverClipApplicant] | None = None) -> None:
         self.applicants = list(applicants or [])
         self.calls: list[tuple[int, int]] = []
+        self.created: list[NaverClipApplicant] = []
 
-    def get_applicants_by_month(self, year: int, month: int) -> list[dict[str, Any]]:
-        self.calls.append((year, month))
+    def create_applicant(self, applicant: NaverClipApplicant) -> NaverClipApplicant:
+        self.created.append(applicant)
+        self.applicants.append(applicant)
+        return applicant
+
+    def list_applicants(self) -> list[NaverClipApplicant]:
         return list(self.applicants)
+
+    def get_applicants_by_month(self, year: int, month: int) -> list[NaverClipApplicant]:
+        self.calls.append((year, month))
+        return [
+            applicant
+            for applicant in self.applicants
+            if applicant.submitted_at.year == year and applicant.submitted_at.month == month
+        ]
 
 
 @dataclass

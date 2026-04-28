@@ -36,6 +36,14 @@ class Settings:
         self.SLACK_APPROVAL_CHANNEL = os.environ.get("SLACK_APPROVAL_CHANNEL", "")
         self.SLACK_RELIEF_CHANNEL = os.environ.get("SLACK_RELIEF_CHANNEL", "")
         self.ADMIN_SLACK_USER_ID = os.environ.get("ADMIN_SLACK_USER_ID", "")
+        self.A2_TEST_SLACK_CHANNEL_ID = os.environ.get(
+            "A2_TEST_SLACK_CHANNEL_ID",
+            self.SLACK_APPROVAL_CHANNEL or "C_HTTP_TRIGGER",
+        )
+        self.A2_TEST_SLACK_THREAD_TS = os.environ.get(
+            "A2_TEST_SLACK_THREAD_TS",
+            "",
+        )
 
         self.CONTENT_SHEET_ID = os.environ.get("CONTENT_SHEET_ID", "")
         self.PERFORMANCE_SHEET_ID = os.environ.get(
@@ -59,10 +67,18 @@ class Settings:
         self.TAB_LOG = os.environ.get("TAB_LOG", "\ub85c\uadf8 \uae30\ub85d")
         self.TAB_LEADS = os.environ.get("TAB_LEADS", "\ub9ac\ub4dc")
         self.TAB_NAVER_FORM = os.environ.get("TAB_NAVER_FORM", "\uc124\ubb38\uc9c0 \uc751\ub2f5 \uc2dc\ud2b81")
+        self.NAVER_APPLICANT_TAB = os.environ.get(
+            "NAVER_APPLICANT_TAB",
+            self.TAB_NAVER_FORM,
+        )
         self.KAKAO_FORM_TAB = os.environ.get("KAKAO_FORM_TAB", "\uc124\ubb38\uc9c0 \uc751\ub2f5 \uc2dc\ud2b81")
         self.KAKAO_OUTPUT_TAB = os.environ.get("KAKAO_OUTPUT_TAB", "\ucd5c\uc885 \ub9ac\uc2a4\ud2b8")
 
         self.NAVER_FORM_ID = os.environ.get("NAVER_FORM_ID", "")
+        self.NAVER_APPLICANT_SHEET_ID = os.environ.get(
+            "NAVER_APPLICANT_SHEET_ID",
+            self.NAVER_FORM_ID,
+        )
         self.NAVER_EXCEL_SHEET_ID = os.environ.get("NAVER_EXCEL_SHEET_ID", "")
         self.NAVER_MANAGER_EMAIL = os.environ.get("NAVER_MANAGER_EMAIL", "")
         self.NAVER_SLACK_CHANNEL = os.environ.get(

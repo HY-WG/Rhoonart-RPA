@@ -8,6 +8,7 @@ from ...models import (
     ChannelStat, RightsHolder,
     Lead, LeadFilter,
     LogEntry,
+    NaverClipApplicant,
     ReliefRequest,
     ReliefRequestItem,
     ReliefRequestStatus,
@@ -39,7 +40,13 @@ class IWorkRequestRepository(ABC):
 
 class INaverClipRepository(ABC):
     @abstractmethod
-    def get_applicants_by_month(self, year: int, month: int) -> list[dict]: ...
+    def create_applicant(self, applicant: NaverClipApplicant) -> NaverClipApplicant: ...
+
+    @abstractmethod
+    def list_applicants(self) -> list[NaverClipApplicant]: ...
+
+    @abstractmethod
+    def get_applicants_by_month(self, year: int, month: int) -> list[NaverClipApplicant]: ...
 
 
 class IPerformanceRepository(ABC):

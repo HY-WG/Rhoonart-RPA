@@ -11,21 +11,25 @@ provider:
   environment:
     # Google
     GOOGLE_CREDENTIALS_FILE: credentials.json
+
     # Slack
     SLACK_BOT_TOKEN: ${env:SLACK_BOT_TOKEN}
     SLACK_ERROR_CHANNEL: ${env:SLACK_ERROR_CHANNEL, "#rpa-error"}
-    # 이메일
+
+    # Email
     SENDER_EMAIL: ${env:SENDER_EMAIL}
-    SENDER_NAME: ${env:SENDER_NAME, "루나트"}
+    SENDER_NAME: ${env:SENDER_NAME, "Rhoonart"}
     USE_SES: ${env:USE_SES, "true"}
     SMTP_HOST: ${env:SMTP_HOST, "smtp.gmail.com"}
     SMTP_PORT: ${env:SMTP_PORT, "587"}
     SMTP_USER: ${env:SMTP_USER, ""}
     SMTP_PASSWORD: ${env:SMTP_PASSWORD, ""}
-    # 공통 시트
+
+    # Shared sheets
     CONTENT_SHEET_ID: ${env:CONTENT_SHEET_ID}
     LOG_SHEET_ID: ${env:LOG_SHEET_ID, ""}
-    TAB_LOG: ${env:TAB_LOG, "로그"}
+    TAB_LOG: ${env:TAB_LOG, "log_records"}
+
   iam:
     role:
       statements:
@@ -54,12 +58,11 @@ custom:
     layer: true
 
 functions:
-
-  # ── A-2: 작품사용신청 승인 자동화 (Slack Event API) ──────────────
+  # A-2: Slack work approval automation
   a2WorkApproval:
     handler: lambda/a2_work_approval_handler.handler
-    description: "A-2 Slack 작품사용신청 수신 → Drive 권한 부여 → 승인 이메일 발송"
-    timeout: 29   # Slack 3초 응답 규칙 준수; 동기 처리 상한
+    description: "A-2 Slack work-usage request handling with Drive permission update and approval email"
+    timeout: 29
     environment:
       CREATOR_SHEET_ID: ${env:CREATOR_SHEET_ID, "1JZ0eLnvMgpjAehpxRfPN2RiG6Pd22EidnnG8tmAvlKQ"}
       DRIVE_FOLDER_ID: ${env:DRIVE_FOLDER_ID, "1SEVgIFr8HivMFXBru3C-mfgfTETeLW92"}
@@ -71,52 +74,49 @@ functions:
           method: post
           cors: true
 
-  # ── A-3: 네이버 클립 월별 — 말일 확인 요청 ──────────────────────
+  # A-3: Monthly homepage intake confirmation on the last day of the month
   a3NaverClipConfirm:
     handler: lambda/a3_naver_clip_monthly_handler.handler
-    description: "A-3 매월 말일: 신청자 목록 Slack 확인 요청"
+    description: "A-3 month-end homepage applicant summary notification to Slack"
     environment:
-      NAVER_FORM_ID: ${env:NAVER_FORM_ID}
-      TAB_NAVER_FORM: ${env:TAB_NAVER_FORM, "설문지 응답 시트1"}
+      NAVER_APPLICANT_SHEET_ID: ${env:NAVER_APPLICANT_SHEET_ID, ""}
+      NAVER_APPLICANT_TAB: ${env:NAVER_APPLICANT_TAB, "NAVER_APPLICANTS"}
       NAVER_MANAGER_EMAIL: ${env:NAVER_MANAGER_EMAIL}
       NAVER_SLACK_CHANNEL: ${env:NAVER_SLACK_CHANNEL, "#naver-clip"}
     events:
       - schedule:
-          # 매월 말일 10시 KST (UTC+9 → UTC 01:00)
           rate: cron(0 1 L * ? *)
           enabled: true
           input:
             mode: "confirm"
 
-  # ── A-3: 네이버 클립 월별 — 1일 엑셀 발송 ──────────────────────
+  # A-3: Monthly homepage intake report email on the first day of the month
   a3NaverClipSend:
     handler: lambda/a3_naver_clip_monthly_handler.handler
-    description: "A-3 매월 1일: 전월 신청자 엑셀 담당자 메일 발송"
+    description: "A-3 previous-month homepage applicant export and email delivery"
     environment:
-      NAVER_FORM_ID: ${env:NAVER_FORM_ID}
-      TAB_NAVER_FORM: ${env:TAB_NAVER_FORM, "설문지 응답 시트1"}
+      NAVER_APPLICANT_SHEET_ID: ${env:NAVER_APPLICANT_SHEET_ID, ""}
+      NAVER_APPLICANT_TAB: ${env:NAVER_APPLICANT_TAB, "NAVER_APPLICANTS"}
       NAVER_MANAGER_EMAIL: ${env:NAVER_MANAGER_EMAIL}
       NAVER_SLACK_CHANNEL: ${env:NAVER_SLACK_CHANNEL, "#naver-clip"}
     events:
       - schedule:
-          # 매월 1일 10시 30분 KST (C-1과 30분 차이)
           rate: cron(30 1 1 * ? *)
           enabled: true
           input:
             mode: "send"
 
-  # ── B-2: 주간 성과 보고 (HTTP Request 트리거) ────────────────────
+  # B-2: Weekly performance report
   b2WeeklyReport:
     handler: lambda/b2_weekly_report_handler.handler
-    description: "B-2 주간 네이버 클립 성과 보고 → 권리사 이메일 발송 (HTTP 트리거)"
+    description: "B-2 weekly Naver Clip performance report and rights-holder email delivery"
     timeout: 600
     memorySize: 1024
     environment:
       PERFORMANCE_SHEET_ID: ${env:PERFORMANCE_SHEET_ID, ""}
-      TAB_CONTENT: ${env:TAB_CONTENT, "콘텐츠 목록"}
-      TAB_STATS: ${env:TAB_STATS, "성과 데이터"}
-      TAB_RIGHTS: ${env:TAB_RIGHTS, "작품 관리"}
-      # 권리사별 Looker Studio 대시보드 URL
+      TAB_CONTENT: ${env:TAB_CONTENT, "content_list"}
+      TAB_STATS: ${env:TAB_STATS, "performance_stats"}
+      TAB_RIGHTS: ${env:TAB_RIGHTS, "rights_management"}
       LOOKER_URL_WAVVE: ${env:LOOKER_URL_WAVVE, ""}
       LOOKER_URL_PANSCINEMA: ${env:LOOKER_URL_PANSCINEMA, ""}
       LOOKER_URL_RIGHTS: ${env:LOOKER_URL_RIGHTS, ""}
@@ -125,17 +125,11 @@ functions:
           path: /report/weekly
           method: post
           cors: true
-      # EventBridge 크론 폴백 (웹 연동 전 또는 수동 실행 필요 시 활성화)
-      # - schedule:
-      #     rate: cron(0 1 ? * MON *)
-      #     enabled: false
-      #     input:
-      #       source: "cron"
 
-  # ── C-1: 리드 발굴 — YouTube Shorts 채널 탐색 (매월 1일) ────────
+  # C-1: YouTube Shorts lead discovery
   c1LeadFilter:
     handler: lambda/c1_lead_filter_handler.handler
-    description: "C-1 YouTube Shorts 드라마·영화 채널 자동 발굴 → 리드 시트 upsert"
+    description: "C-1 YouTube Shorts lead discovery and lead-sheet update"
     timeout: 600
     memorySize: 1024
     environment:
@@ -143,29 +137,46 @@ functions:
       SEED_CHANNEL_SHEET_ID: ${env:SEED_CHANNEL_SHEET_ID, "18HY8-FdG_nAe-gOP7WNKiu5k7xMQliW9oxvKTcLC8Is"}
       SEED_CHANNEL_GID: ${env:SEED_CHANNEL_GID, "1224056617"}
       LEAD_SHEET_ID: ${env:LEAD_SHEET_ID}
-      TAB_LEADS: ${env:TAB_LEADS, "리드"}
+      TAB_LEADS: ${env:TAB_LEADS, "leads"}
       C1_MAX_CHANNELS: ${env:C1_MAX_CHANNELS, "200"}
     events:
       - schedule:
-          # 매월 1일 10시 KST (UTC 01:00)
           rate: cron(0 1 1 * ? *)
           enabled: true
           input:
             source: "cron"
 
-  # ── C-2: 콜드메일 발송 (수동 트리거) ────────────────────────────
+  # C-2: Cold email delivery
   c2ColdEmail:
     handler: lambda/c2_cold_email_handler.handler
-    description: "C-2 콜드메일 발송 (수동 호출 또는 크론 설정)"
+    description: "C-2 cold email delivery"
     environment:
       LEAD_SHEET_ID: ${env:LEAD_SHEET_ID}
-      TAB_LEADS: ${env:TAB_LEADS, "리드"}
+      TAB_LEADS: ${env:TAB_LEADS, "leads"}
       C2_BATCH_SIZE: ${env:C2_BATCH_SIZE, "50"}
       C2_MIN_MONTHLY_VIEWS: ${env:C2_MIN_MONTHLY_VIEWS, "0"}
-    # 크론 설정이 필요한 경우 아래 주석 해제
-    # events:
-    #   - schedule:
-    #       rate: cron(0 2 ? * MON *)
-    #       enabled: false
-    #       input:
-    #         batch_size: 50
+
+  # C-3: Work registration
+  c3WorkRegister:
+    handler: lambda/c3_work_register_handler.handler
+    description: "C-3 work registration and guideline creation"
+
+  # C-4: Coupon notification
+  c4CouponNotification:
+    handler: lambda/c4_coupon_notification_handler.handler
+    description: "C-4 coupon request detection and notification"
+
+  # D-2: Relief request backoffice
+  d2ReliefRequest:
+    handler: lambda/d2_relief_request_handler.handler
+    description: "D-2 relief request backoffice API"
+    events:
+      - http:
+          path: /relief/request
+          method: post
+          cors: true
+
+  # D-3: Kakao creator onboarding
+  d3KakaoCreatorOnboarding:
+    handler: lambda/d3_kakao_creator_onboarding_handler.handler
+    description: "D-3 Kakao creator onboarding sheet processing"

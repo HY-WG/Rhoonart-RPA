@@ -4,6 +4,7 @@ from .performance import ChannelStat, RightsHolder
 from .lead import Lead, LeadFilter
 from .log_entry import LogEntry, TaskStatus, TriggerType
 from .work import Work
+from .naver_clip_applicant import NaverClipApplicant, RepresentativeChannelPlatform
 from .relief_request import (
     ReliefRequest,
     ReliefRequestItem,
@@ -25,4 +26,6 @@ __all__ = [
     "RightsHolderContact", "MailTemplate", "OutboundMail",
     "OutboundMailStatus", "UploadedDocument",
     "Work",
+    "NaverClipApplicant",
+    "RepresentativeChannelPlatform",
 ]

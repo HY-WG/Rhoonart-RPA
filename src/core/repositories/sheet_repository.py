@@ -25,6 +25,8 @@ from ...models import (
     ChannelStat, RightsHolder,
     Lead, LeadFilter,
     LogEntry,
+    NaverClipApplicant,
+    RepresentativeChannelPlatform,
 )
 from ..logger import CoreLogger
 
@@ -371,3 +373,75 @@ class SheetFormResponseRepository(INaverClipRepository):
         return result
 
 
+class SheetNaverClipApplicantRepository(INaverClipRepository):
+    """Worksheet-backed repository for A-3 homepage submissions."""
+
+    HEADERS = [
+        "applicant_id",
+        "submitted_at",
+        "name",
+        "phone_number",
+        "naver_id",
+        "naver_clip_profile_name",
+        "naver_clip_profile_id",
+        "representative_channel_name",
+        "representative_channel_platform",
+        "channel_url",
+    ]
+
+    def __init__(self, ws: gspread.Worksheet) -> None:
+        self._ws = ws
+        self._ensure_header()
+
+    def create_applicant(self, applicant: NaverClipApplicant) -> NaverClipApplicant:
+        self._ws.append_row(
+            [
+                applicant.applicant_id,
+                applicant.submitted_at.isoformat(),
+                applicant.name,
+                applicant.phone_number,
+                applicant.naver_id,
+                applicant.naver_clip_profile_name,
+                applicant.naver_clip_profile_id,
+                applicant.representative_channel_name,
+                applicant.representative_channel_platform.value,
+                applicant.channel_url,
+            ]
+        )
+        return applicant
+
+    def list_applicants(self) -> list[NaverClipApplicant]:
+        rows = _rows_to_dicts(self._ws)
+        applicants: list[NaverClipApplicant] = []
+        for row in rows:
+            submitted_at_raw = str(row.get("submitted_at", "")).strip()
+            if not submitted_at_raw:
+                continue
+            applicants.append(
+                NaverClipApplicant(
+                    applicant_id=str(row.get("applicant_id", "")).strip(),
+                    submitted_at=parse_form_timestamp(submitted_at_raw),
+                    name=str(row.get("name", "")).strip(),
+                    phone_number=str(row.get("phone_number", "")).strip(),
+                    naver_id=str(row.get("naver_id", "")).strip(),
+                    naver_clip_profile_name=str(row.get("naver_clip_profile_name", "")).strip(),
+                    naver_clip_profile_id=str(row.get("naver_clip_profile_id", "")).strip(),
+                    representative_channel_name=str(row.get("representative_channel_name", "")).strip(),
+                    representative_channel_platform=RepresentativeChannelPlatform(
+                        str(row.get("representative_channel_platform", "")).strip()
+                    ),
+                    channel_url=str(row.get("channel_url", "")).strip(),
+                )
+            )
+        return applicants
+
+    def get_applicants_by_month(self, year: int, month: int) -> list[NaverClipApplicant]:
+        return [
+            applicant
+            for applicant in self.list_applicants()
+            if applicant.submitted_at.year == year and applicant.submitted_at.month == month
+        ]
+
+    def _ensure_header(self) -> None:
+        if not self._ws.row_values(1):
+            self._ws.append_row(self.HEADERS)

@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 
+import pytz
 from openpyxl import load_workbook
 
 from src.handlers.a3_naver_clip_monthly import RunMode, run
+from src.models import NaverClipApplicant, RepresentativeChannelPlatform
 from tests.fakes import FakeFormRepo, FakeLogRepo, FakeNotifier
+
+KST = pytz.timezone("Asia/Seoul")
+
+
+def _build_applicant() -> NaverClipApplicant:
+    return NaverClipApplicant(
+        applicant_id="a3-test-001",
+        name="홍길동",
+        phone_number="010-1234-5678",
+        naver_id="naver_user_01",
+        naver_clip_profile_name="홍길동 클립",
+        naver_clip_profile_id="clip-profile-001",
+        representative_channel_name="대표 채널 A",
+        representative_channel_platform=RepresentativeChannelPlatform.YOUTUBE,
+        channel_url="https://example.com/channel-a",
+        submitted_at=datetime(2026, 4, 20, 10, 0, tzinfo=KST),
+    )
 
 
 def test_a3_confirm_no_applicants_sends_slack_notice() -> None:
@@ -34,17 +54,8 @@ def test_a3_confirm_no_applicants_sends_slack_notice() -> None:
 
 
 def test_a3_send_builds_excel_and_emails_attachment() -> None:
-    applicants = [
-        {
-            "channel_name": "Channel A",
-            "channel_url": "https://example.com/a",
-            "genre": "Drama",
-            "manager_name": "Alice",
-            "manager_email": "alice@example.com",
-            "timestamp": "2026-04-20T10:00:00+09:00",
-        }
-    ]
-    form_repo = FakeFormRepo(applicants)
+    applicant = _build_applicant()
+    form_repo = FakeFormRepo([applicant])
     email_notifier = FakeNotifier(send_result=True)
 
     result = run(
@@ -71,6 +82,7 @@ def test_a3_send_builds_excel_and_emails_attachment() -> None:
 
     workbook = load_workbook(BytesIO(payload))
     ws = workbook.active
-    assert ws["B2"].value == "Channel A"
-    assert ws["C2"].value == "https://example.com/a"
-    assert ws["F2"].value == "alice@example.com"
+    assert ws["C2"].value == "홍길동"
+    assert ws["E2"].value == "naver_user_01"
+    assert ws["I2"].value == "유튜브"
+    assert ws["J2"].value == "https://example.com/channel-a"

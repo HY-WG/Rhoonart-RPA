@@ -109,3 +109,24 @@ def test_dashboard_routes_expose_task_and_run_state() -> None:
     assert detail_response.status_code == 200
     assert detail_response.json()["execution_mode"] == "dry_run"
     assert detail_response.json()["result"]["ok"] is True
+
+
+def test_runner_marks_business_failure_as_failed() -> None:
+    service = IntegrationTaskService(executor=ThreadPoolExecutor(max_workers=1))
+    service._registry = {
+        "X-BIZ-FAIL": (
+            IntegrationTaskSpec(
+                task_id="X-BIZ-FAIL",
+                title="Business Failure",
+                description="Returns success=false",
+                default_payload={},
+            ),
+            lambda run, log: {"success": False, "message": "business failed"},
+        )
+    }
+
+    run = service.start_run("X-BIZ-FAIL", {}, execution_mode=ExecutionMode.DRY_RUN)
+    completed = _wait_for_completion(service, run.run_id)
+
+    assert completed.status == IntegrationRunStatus.FAILED
+    assert completed.error == "business failed"

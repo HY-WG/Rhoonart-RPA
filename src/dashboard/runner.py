@@ -62,6 +62,11 @@ def _raise_for_error_result(result: dict[str, Any]) -> None:
         if isinstance(body, dict) and body.get("error"):
             raise RuntimeError(str(body["error"]))
         raise RuntimeError(f"handler returned statusCode={status_code}")
+    if result.get("success") is False:
+        raise RuntimeError(str(result.get("message") or "task reported success=false"))
+    body = result.get("body")
+    if isinstance(body, dict) and body.get("success") is False:
+        raise RuntimeError(str(body.get("message") or "task body reported success=false"))
 
 
 def _adapter_a2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
@@ -80,6 +85,12 @@ def _adapter_a2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
             "preview_only": True,
         }
 
+    thread_ts = str(run.payload.get("slack_message_ts", "")).strip()
+    if not thread_ts or thread_ts.startswith("dashboard-a2-"):
+        raise ValueError(
+            "A-2 real-run requires a real Slack message ts in payload.slack_message_ts."
+        )
+
     handler = importlib.import_module("lambda.a2_work_approval_handler").handler
     event = {
         "body": json.dumps(
@@ -88,14 +99,14 @@ def _adapter_a2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
                 "event": {
                     "type": "message",
                     "channel": run.payload.get("slack_channel_id", "C_HTTP_TRIGGER"),
-                    "ts": run.payload.get("slack_message_ts", "integration-0001"),
+                    "ts": thread_ts,
                     "text": slack_text,
                 },
             },
             ensure_ascii=False,
         )
     }
-    log("Dispatching real A-2 approval flow through the lambda entrypoint.")
+    log(f"Dispatching real A-2 approval flow through the lambda entrypoint with thread_ts={thread_ts}.")
     return _normalize_result(handler(event, None))
 
 
@@ -332,15 +343,15 @@ class IntegrationTaskService:
                 IntegrationTaskSpec(
                     task_id="A-2",
                     title="A-2 Work Approval",
-                    description="Validate or execute the work-approval flow from a Slack-style request.",
+                    description="Validate or execute the work-approval flow from a Slack-style request. Real thread reply verification needs an actual Slack message ts.",
                     default_payload={
                         "channel_name": "Test Channel",
                         "work_title": "Test Work",
-                        "slack_channel_id": "C_HTTP_TRIGGER",
-                        "slack_message_ts": "dashboard-a2-0001",
+                        "slack_channel_id": settings.A2_TEST_SLACK_CHANNEL_ID,
+                        "slack_message_ts": settings.A2_TEST_SLACK_THREAD_TS or "",
                     },
                     targets=["Google Sheets", "Google Drive", "Email", "Slack"],
-                    real_run_warning="Drive permissions and approval email delivery will run for real.",
+                    real_run_warning="Drive permissions and approval email delivery will run for real. For Slack thread reply testing, replace slack_message_ts with a real Slack message ts such as 1777346971.414089.",
                 ),
                 _adapter_a2,
             ),
