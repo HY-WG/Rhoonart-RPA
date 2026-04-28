@@ -157,12 +157,17 @@ function renderTaskCard(task) {
 
 // ── 탭별 도구 패널 ────────────────────────────────────────────────────────
 function renderToolsPanel(tabId) {
-  const filtered = state.tasks.filter(t => t.tab_group === tabId);
+  // tab_group 미설정 태스크는 기본값 "ops_admin"으로 처리
+  const filtered = state.tasks.filter(t => (t.tab_group || "ops_admin") === tabId);
+  const isEmpty  = state.tasks.length === 0;
+  const emptyMsg = isEmpty
+    ? "도구를 불러오는 중이거나 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요."
+    : "등록된 도구가 없습니다.";
   return `
 <section class="panel">
   <p class="panel-subtitle">${esc(TAB_SUBTITLE[tabId] || "")}</p>
   <div class="task-grid">
-    ${filtered.length ? filtered.map(renderTaskCard).join("") : `<div class="empty">등록된 도구가 없습니다.</div>`}
+    ${filtered.length ? filtered.map(renderTaskCard).join("") : `<div class="empty">${emptyMsg}</div>`}
   </div>
 </section>`;
 }
@@ -479,11 +484,20 @@ async function loadChannelVideos() {
 }
 
 async function boot() {
-  [state.tasks, state.resources, state.runs] = await Promise.all([
+  // Promise.allSettled: 하나가 실패해도 나머지 데이터는 정상 표시
+  const [tasksResult, resourcesResult, runsResult] = await Promise.allSettled([
     integrationRepo.listTasks(),
     integrationRepo.loadResources(),
     integrationRepo.listRuns(),
   ]);
+
+  state.tasks     = tasksResult.status     === "fulfilled" ? tasksResult.value     : [];
+  state.resources = resourcesResult.status === "fulfilled" ? resourcesResult.value : null;
+  state.runs      = runsResult.status      === "fulfilled" ? runsResult.value      : [];
+
+  if (tasksResult.status === "rejected") {
+    console.error("[boot] 태스크 목록 로드 실패:", tasksResult.reason);
+  }
   render();
 }
 

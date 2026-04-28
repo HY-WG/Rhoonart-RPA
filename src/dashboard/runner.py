@@ -412,13 +412,18 @@ class IntegrationTaskService:
                     title="C-1 리드 발굴",
                     tab_group="ops_admin",
                     description=(
-                        "**트리거:** 신규 작품 등록 후 7일(2주) 이내 해당 작품의 '작품사용신청'이 5개 이하일 시, "
-                        "시스템이 '채널 부족 — 리드발굴 필요'로 판단하여 자동 실행.\n\n"
+                        "**구현 내용:** 신규 업로드 영상당 작품사용신청이 5개 이하일 시, 리드발굴 진행.\n"
+                        "YouTube Data API v3 기반 2-Layer 구조로 드라마·영화 클립 채널을 자동 발굴·분류. "
+                        "매월 1일 자동 실행하여 A/B/B? 등급 채널을 리드 시트에 upsert.\n\n"
+                        "**트리거 흐름:**\n"
+                        "① 신규 작품 등록\n"
+                        "② 2주(7일)간 해당 작품의 '작품사용신청'이 5개 이하일 시,\n"
+                        "③ '채널 부족 — 리드발굴 필요' 판단 → 관리자에게 Slack 알림 발송\n\n"
                         "**Slack 알림 포맷:**\n"
                         "{작품이름}의 이용 채널 수가 적어 리드발굴을 진행했습니다.\n"
-                        "리드발굴 {TIMESTAMP} 진행 / 대표 TOP3 채널 / 자세한 정보는 시트 확인\n\n"
-                        "**구현내용:** YouTube Data API v3 기반 2-Layer 구조로 드라마·영화 클립 채널을 자동 발굴·분류. "
-                        "A/B/B? 등급 채널을 리드 시트에 upsert 후 Slack 알림 발송."
+                        "리드발굴 {TIMESTAMP} 진행,\n"
+                        "{대표 TOP3 채널 이름}\n"
+                        "자세한 정보는 SHEET를 확인해주세요. [시트링크]"
                     ),
                     default_payload={"_trigger_source": "dashboard"},
                     targets=["YouTube API", "Google Sheets", "Slack"],
