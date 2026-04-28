@@ -12,6 +12,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from src.agents.approval.in_memory import InMemoryApprovalRepository
+from src.agents.approval.queue import ApprovalQueue
+from src.api.approval_router import build_approval_router
 from src.api.deps import ALL_SCOPES, build_google_creds
 from src.backoffice.app import build_app as build_relief_app
 from src.backoffice.dependencies import get_relief_request_service
@@ -20,6 +23,7 @@ from src.core.repositories.sheet_repository import SheetNaverClipApplicantReposi
 from src.dashboard.app import build_app as build_dashboard_app
 from src.dashboard.runner import build_integration_task_service
 from src.models import NaverClipApplicant, RepresentativeChannelPlatform
+from src.handlers.a2_work_approval import parse_manual_request
 
 KST = pytz.timezone("Asia/Seoul")
 
@@ -50,6 +54,11 @@ class A3ApplicantResponse(BaseModel):
     representative_channel_platform: RepresentativeChannelPlatform
     channel_url: str
     submitted_at: datetime
+
+
+class A2ManualRequestStub(BaseModel):
+    channel_name: str
+    work_title: str
 
 
 TASK_HANDLERS: dict[str, str] = {
@@ -115,6 +124,13 @@ def build_app() -> FastAPI:
     dashboard_app = build_dashboard_app(service=dashboard_service)
     relief_app = build_relief_app(service=get_relief_request_service())
 
+    # Approval Queue (InMemory — Supabase 전환 시 SupabaseApprovalRepository로 교체)
+    _approval_repo = InMemoryApprovalRepository()
+    _notifier = type("_Stub", (), {"send": lambda self, **kw: None})()
+    _approval_queue = ApprovalQueue(repo=_approval_repo, notifier=_notifier)
+    approval_router = build_approval_router(_approval_queue)
+    app.include_router(approval_router)
+
     app.mount("/dashboard", dashboard_app)
     app.mount("/relief", relief_app)
 
@@ -141,6 +157,7 @@ def build_app() -> FastAPI:
             <ul>
               <li><a href="/a3/apply">A-3 Homepage Intake Form</a></li>
               <li><a href="/dashboard/">Integration Test Dashboard</a></li>
+              <li><a href="/api/approvals/pending">승인 대기 목록 (Approvals)</a></li>
               <li><a href="/docs">Control Server API Docs</a></li>
               <li><a href="/relief/docs">D-2 Backoffice API Docs</a></li>
             </ul>
@@ -156,6 +173,26 @@ def build_app() -> FastAPI:
             "time": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S %Z"),
             "dashboard_repository": settings.INTEGRATION_DASHBOARD_DB_TYPE,
             "auth_required": bool(settings.X_INTERN_TOKEN),
+        }
+
+    @app.post("/api/a2/manual-request-stub")
+    def a2_manual_request_stub(
+        request: A2ManualRequestStub,
+        _: None = Depends(_check_auth),
+    ) -> dict[str, Any]:
+        channel_name, work_title = parse_manual_request(
+            request.channel_name,
+            request.work_title,
+        )
+        proposed_endpoint = "/work-approvals/request"
+        return {
+            "status": "stub_only",
+            "channel_name": channel_name,
+            "work_title": work_title,
+            "manuals_api_base_url": "https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api",
+            "proposed_endpoint": proposed_endpoint,
+            "proposed_url": f"https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api{proposed_endpoint}",
+            "next_step": "개발팀에서 실제 endpoint 및 채널 보유 작품 조회 명세 제공 후 연결",
         }
 
     @app.get("/a3/apply", response_class=HTMLResponse)
