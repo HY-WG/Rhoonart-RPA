@@ -1,5 +1,6 @@
 .env
 credentials.json
+credentials.oauth.json
 __pycache__/
 *.pyc
 .venv/
@@ -13,3 +14,5 @@ CLAUDE.md
 scripts/*.json
 scripts/*.png
 scripts/*.txt
+tmp_*.json
+tmp_*.txt
