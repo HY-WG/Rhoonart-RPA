@@ -60,6 +60,7 @@ class Lead:
     platform: str  # "youtube"
     genre: Genre
     monthly_shorts_views: int
+    tier: Optional[str] = None
     subscribers: Optional[int] = None
     email: Optional[str] = None
     email_sent_status: EmailSentStatus = EmailSentStatus.NOT_SENT

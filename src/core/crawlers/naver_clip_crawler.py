@@ -1,4 +1,4 @@
-"""네이버 클립 해시태그 페이지 크롤러 (B-2) — GraphQL 직접 호출 방식.
+"""네이버 클립 해시태그 페이지 크롤러 (B-2) - GraphQL 직접 호출 방식.
 
 API 탐색 결과 (2026-04-23):
   - 엔드포인트: POST https://clip.naver.com/api/graphql
@@ -11,13 +11,19 @@ API 탐색 결과 (2026-04-23):
       user.profileId           → 크리에이터 채널 ID
       publishedTime            → 게시 시각 (ISO 8601, KST)
   - 해시태그 집계 통계 전용 API 없음 → 모든 클립을 순회하여 집계
+
+성능 개선 (2026-04-28):
+  - use_parallel=True 시 ThreadPoolExecutor로 해시태그 병렬 크롤링
+  - on_progress 콜백으로 외부에서 진행 상황 추적 가능
+  - 해시태그당 페이지 단위 진행 로그 추가
 """
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 import requests
 
@@ -68,6 +74,8 @@ query ContentsQuery(
         id
         mediaId
         mediaType
+        title
+        endUrl
         publishedTime
         count
         user {
@@ -93,6 +101,8 @@ class ClipStat:
     media_id: str
     profile_id: str
     nickname: str
+    title: str
+    video_url: str
     published_time: Optional[datetime]
     views: int
     likes: int
@@ -122,6 +132,9 @@ class NaverClipCrawler:
         contents: [(식별코드, 콘텐츠명), ...] 목록
         max_clips: 해시태그당 최대 수집 클립 수 (기본 2000)
         week_days: '주간' 기준 일수 (기본 7)
+        use_parallel: True 시 ThreadPoolExecutor로 해시태그를 병렬 처리 (기본 False)
+        max_workers: 병렬 처리 시 최대 동시 요청 수 (기본 4)
+        on_progress: 해시태그 1개 완료 시 호출될 콜백 (completed: int, total: int) -> None
     """
 
     def __init__(
@@ -129,41 +142,104 @@ class NaverClipCrawler:
         contents: list[tuple[str, str]],
         max_clips: int = _MAX_CLIPS,
         week_days: int = 7,
+        use_parallel: bool = False,
+        max_workers: int = 4,
+        on_progress: Optional[Callable[[int, int], None]] = None,
     ) -> None:
         self._contents = contents
         self._max_clips = max_clips
         self._week_cutoff = datetime.now(KST) - timedelta(days=week_days)
+        self._use_parallel = use_parallel
+        self._max_workers = max_workers
+        self._on_progress = on_progress
 
     # ── public ────────────────────────────────────────────────────────────
 
     def crawl(self) -> list[dict]:
-        """모든 식별코드를 순회하여 통계를 반환.
+        """모든 식별코드를 순회하여 집계 통계를 반환한다."""
+        return [
+            self._stat_to_dict(stat, stat.identifier, stat.content_name)
+            for stat in self.crawl_stats()
+        ]
 
-        Returns:
-            PerformanceRepository.upsert_channel_stats()에 전달할 dict 목록.
-            키: channel_id, channel_name, platform, total_views,
-                weekly_views, video_count, total_likes
-        """
-        results = []
-        for identifier, content_name in self._contents:
+    def crawl_stats(self) -> list[NaverClipHashtagStat]:
+        """모든 식별코드를 순회하여 해시태그별 원본/집계 통계를 반환한다."""
+        total = len(self._contents)
+        log.info("[NaverClipCrawler] 크롤링 시작 - 대상 %d개 해시태그 (병렬=%s)", total, self._use_parallel)
+
+        if self._use_parallel and total > 1:
+            return self._crawl_parallel_stats(total)
+        return self._crawl_sequential_stats(total)
+
+    def _crawl_sequential_stats(self, total: int) -> list[NaverClipHashtagStat]:
+        """해시태그 순차 크롤링."""
+        results: list[NaverClipHashtagStat] = []
+        for idx, (identifier, content_name) in enumerate(self._contents, 1):
+            log.info("[B-2] (%d/%d) '%s' 크롤링 시작...", idx, total, content_name)
             stat = self._crawl_hashtag(identifier, content_name)
             if stat:
-                results.append({
-                    "channel_id":    identifier,
-                    "channel_name":  content_name,
-                    "platform":      "naver_clip",
-                    "total_views":   stat.total_views,
-                    "weekly_views":  stat.weekly_views,
-                    "video_count":   stat.clip_count,
-                    "new_clips_week": stat.new_clips_this_week,
-                    "total_likes":   stat.total_likes,
-                })
+                results.append(stat)
                 log.info(
-                    "[%s] %s — 총 %d클립 / 누적 조회 %d / 주간 조회 %d",
-                    identifier, content_name,
+                    "[B-2] (%d/%d) '%s' 완료 - %d클립 / 누적조회 %d / 주간조회 %d",
+                    idx, total, content_name,
                     stat.clip_count, stat.total_views, stat.weekly_views,
                 )
+            if self._on_progress:
+                try:
+                    self._on_progress(idx, total)
+                except Exception:
+                    pass
         return results
+
+    def _crawl_parallel_stats(self, total: int) -> list[NaverClipHashtagStat]:
+        """해시태그 병렬 크롤링 (ThreadPoolExecutor)."""
+        workers = min(self._max_workers, total)
+        log.info("[NaverClipCrawler] 병렬 크롤링 시작 - workers=%d", workers)
+
+        results_map: dict[str, NaverClipHashtagStat] = {}
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_item = {
+                executor.submit(self._crawl_hashtag, identifier, content_name): (identifier, content_name)
+                for identifier, content_name in self._contents
+            }
+            for future in as_completed(future_to_item):
+                identifier, content_name = future_to_item[future]
+                completed += 1
+                try:
+                    stat = future.result()
+                    if stat:
+                        results_map[identifier] = stat
+                        log.info(
+                            "[B-2] (%d/%d) '%s' 완료 - %d클립 / 누적조회 %d / 주간조회 %d",
+                            completed, total, content_name,
+                            stat.clip_count, stat.total_views, stat.weekly_views,
+                        )
+                except Exception as e:
+                    log.error("[B-2] (%d/%d) '%s' 크롤링 실패: %s", completed, total, content_name, e)
+
+                if self._on_progress:
+                    try:
+                        self._on_progress(completed, total)
+                    except Exception:
+                        pass
+
+        # 원래 순서 유지
+        return [results_map[idf] for idf, _ in self._contents if idf in results_map]
+
+    @staticmethod
+    def _stat_to_dict(stat: "NaverClipHashtagStat", identifier: str, content_name: str) -> dict:
+        return {
+            "channel_id":    identifier,
+            "channel_name":  content_name,
+            "platform":      "naver_clip",
+            "total_views":   stat.total_views,
+            "weekly_views":  stat.weekly_views,
+            "video_count":   stat.clip_count,
+            "new_clips_week": stat.new_clips_this_week,
+            "total_likes":   stat.total_likes,
+        }
 
     # ── internal ──────────────────────────────────────────────────────────
 
@@ -194,14 +270,24 @@ class NaverClipCrawler:
                 session_start_time = contents.get("sessionStartTime")
 
             edges = contents.get("edges") or []
+            before = len(clips)
             for edge in edges:
                 node = edge.get("node") or {}
                 clip = self._parse_node(node)
                 if clip:
                     clips.append(clip)
+            after = len(clips)
+
+            # 페이지 단위 진행 로그 (5페이지마다 or 첫 페이지)
+            if page_num == 1 or page_num % 5 == 0:
+                log.info(
+                    "[%s] 페이지 %d 완료 - 이번 페이지 %d건 / 누적 %d클립",
+                    identifier, page_num, after - before, after,
+                )
 
             page_info = contents.get("pageInfo") or {}
             if not page_info.get("hasNextPage"):
+                log.info("[%s] 마지막 페이지 도달 (페이지 %d, 총 %d클립)", identifier, page_num, len(clips))
                 break
             cursor = page_info.get("endCursor")
             if not cursor:
@@ -210,7 +296,7 @@ class NaverClipCrawler:
             time.sleep(_REQ_DELAY)
 
         if not clips:
-            log.warning("[%s] %s — 수집된 클립 없음", identifier, content_name)
+            log.warning("[%s] %s - 수집된 클립 없음", identifier, content_name)
             return None
 
         return self._aggregate(identifier, content_name, clips)
@@ -283,6 +369,8 @@ class NaverClipCrawler:
                 media_id=media_id,
                 profile_id=user.get("profileId", ""),
                 nickname=user.get("nickname", ""),
+                title=str(node.get("title") or "").strip(),
+                video_url=str(node.get("endUrl") or "").strip(),
                 published_time=published_time,
                 views=int(node.get("count") or 0),
                 likes=int(like.get("count") or 0),

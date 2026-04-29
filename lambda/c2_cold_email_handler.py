@@ -91,6 +91,7 @@ def handler(event: dict, context) -> dict:
     min_views    = int(event.get("min_monthly_views", DEFAULT_MIN_VIEWS))
     raw_genre    = event.get("genre")
     raw_platform = event.get("platform")
+    dry_run      = str(event.get("dry_run", "true")).lower() == "true"
 
     genre    = _GENRE_MAP.get(raw_genre) if raw_genre else None
     platform = raw_platform if raw_platform else None
@@ -119,6 +120,7 @@ def handler(event: dict, context) -> dict:
             genre=genre,
             min_monthly_views=min_views,
             platform=platform,
+            dry_run=dry_run,
         )
 
     return _run(event, context)

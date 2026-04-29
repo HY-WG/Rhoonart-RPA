@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import gspread
@@ -10,6 +11,7 @@ import pytz
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.agents.approval.in_memory import InMemoryApprovalRepository
@@ -20,12 +22,15 @@ from src.backoffice.app import build_app as build_relief_app
 from src.backoffice.dependencies import get_relief_request_service
 from src.config import settings
 from src.core.repositories.sheet_repository import SheetNaverClipApplicantRepository
+from src.core.repositories.supabase_b2_repository import SupabaseB2Repository
 from src.dashboard.app import build_app as build_dashboard_app
 from src.dashboard.runner import build_integration_task_service
-from src.models import NaverClipApplicant, RepresentativeChannelPlatform
 from src.handlers.a2_work_approval import parse_manual_request
+from src.models import NaverClipApplicant, RepresentativeChannelPlatform
+from src.services import B2AnalyticsFilters, B2AnalyticsService
 
 KST = pytz.timezone("Asia/Seoul")
+ADMIN_B2_STATIC_DIR = Path(__file__).resolve().parents[1] / "admin_b2" / "static"
 
 
 class GenericTriggerRequest(BaseModel):
@@ -61,6 +66,25 @@ class A2ManualRequestStub(BaseModel):
     work_title: str
 
 
+class B2AdminRunRequest(BaseModel):
+    send_notifications: bool = False
+    source: str = "admin_page"
+
+
+class B2AnalyticsQuery(BaseModel):
+    checked_from: str | None = None
+    checked_to: str | None = None
+    uploaded_from: str | None = None
+    uploaded_to: str | None = None
+    channel_name: str | None = None
+    clip_title: str | None = None
+    work_title: str | None = None
+    rights_holder_name: str | None = None
+    platform: str | None = None
+    group_by: str = "clip"
+    limit: int = 100
+
+
 TASK_HANDLERS: dict[str, str] = {
     "A-2": "lambda.a2_work_approval_handler",
     "A-3": "lambda.a3_naver_clip_monthly_handler",
@@ -93,6 +117,19 @@ def build_naver_clip_repository() -> SheetNaverClipApplicantRepository:
     sheet = client.open_by_key(settings.NAVER_APPLICANT_SHEET_ID)
     worksheet = sheet.worksheet(settings.NAVER_APPLICANT_TAB)
     return SheetNaverClipApplicantRepository(worksheet)
+
+
+def build_b2_supabase_repository() -> SupabaseB2Repository:
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured")
+    return SupabaseB2Repository(
+        supabase_url=settings.SUPABASE_URL,
+        service_role_key=settings.SUPABASE_SERVICE_ROLE_KEY,
+    )
+
+
+def build_b2_analytics_service() -> B2AnalyticsService:
+    return B2AnalyticsService()
 
 
 def _applicant_to_response(applicant: NaverClipApplicant) -> A3ApplicantResponse:
@@ -133,6 +170,12 @@ def build_app() -> FastAPI:
 
     app.mount("/dashboard", dashboard_app)
     app.mount("/relief", relief_app)
+    if ADMIN_B2_STATIC_DIR.exists():
+        app.mount(
+            "/admin-assets/b2",
+            StaticFiles(directory=ADMIN_B2_STATIC_DIR),
+            name="b2-admin-assets",
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -157,6 +200,7 @@ def build_app() -> FastAPI:
             <ul>
               <li><a href="/a3/apply">A-3 Homepage Intake Form</a></li>
               <li><a href="/dashboard/">Integration Test Dashboard</a></li>
+              <li><a href="/admin/b2">B-2 Analytics Admin</a></li>
               <li><a href="/api/approvals/pending">승인 대기 목록 (Approvals)</a></li>
               <li><a href="/docs">Control Server API Docs</a></li>
               <li><a href="/relief/docs">D-2 Backoffice API Docs</a></li>
@@ -194,6 +238,175 @@ def build_app() -> FastAPI:
             "proposed_url": f"https://aajtilnicgqywpmuuxtr.supabase.co/functions/v1/manuals-api{proposed_endpoint}",
             "next_step": "개발팀에서 실제 endpoint 및 채널 보유 작품 조회 명세 제공 후 연결",
         }
+
+    @app.get("/admin/b2", response_class=HTMLResponse)
+    def b2_admin_page() -> str:
+        return """
+        <!doctype html>
+        <html lang="ko">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>B-2 네이버 클립 성과 어드민</title>
+          <link rel="stylesheet" href="/admin-assets/b2/b2_admin.css" />
+        </head>
+        <body>
+          <div id="app"></div>
+          <script type="module" src="/admin-assets/b2/b2_admin.js"></script>
+        </body>
+        </html>
+        """
+
+    @app.get("/api/admin/b2/content-catalog")
+    def list_b2_content_catalog(_: None = Depends(_check_auth)) -> list[dict[str, Any]]:
+        repo = build_b2_supabase_repository()
+        return repo.list_content_catalog()
+
+    @app.get("/api/admin/b2/rights-holders")
+    def list_b2_rights_holders(
+        enabled_only: bool = True,
+        _: None = Depends(_check_auth),
+    ) -> list[dict[str, Any]]:
+        repo = build_b2_supabase_repository()
+        return repo.list_rights_holders(enabled_only=enabled_only)
+
+    @app.get("/api/admin/b2/clip-reports")
+    def list_b2_clip_reports(
+        limit: int = 100,
+        work_title: str | None = None,
+        _: None = Depends(_check_auth),
+    ) -> list[dict[str, Any]]:
+        repo = build_b2_supabase_repository()
+        return repo.list_clip_reports(limit=limit, work_title=work_title)
+
+    @app.get("/api/admin/b2/analytics/options")
+    def get_b2_analytics_options(_: None = Depends(_check_auth)) -> dict[str, Any]:
+        repo = build_b2_supabase_repository()
+        service = build_b2_analytics_service()
+        rows = repo.list_all_clip_reports()
+        return service.filter_options(rows)
+
+    @app.get("/api/admin/b2/analytics")
+    def get_b2_analytics(
+        checked_from: str | None = None,
+        checked_to: str | None = None,
+        uploaded_from: str | None = None,
+        uploaded_to: str | None = None,
+        channel_name: str | None = None,
+        clip_title: str | None = None,
+        work_title: str | None = None,
+        rights_holder_name: str | None = None,
+        platform: str | None = None,
+        group_by: str = "clip",
+        limit: int = 100,
+        _: None = Depends(_check_auth),
+    ) -> dict[str, Any]:
+        repo = build_b2_supabase_repository()
+        service = build_b2_analytics_service()
+        filters = B2AnalyticsFilters(
+            checked_from=datetime.fromisoformat(checked_from).date() if checked_from else None,
+            checked_to=datetime.fromisoformat(checked_to).date() if checked_to else None,
+            uploaded_from=datetime.fromisoformat(uploaded_from).date() if uploaded_from else None,
+            uploaded_to=datetime.fromisoformat(uploaded_to).date() if uploaded_to else None,
+            channel_name=channel_name or None,
+            clip_title=clip_title or None,
+            work_title=work_title or None,
+            rights_holder_name=rights_holder_name or None,
+            platform=platform or None,
+        )
+        rows = repo.list_clip_reports_filtered(
+            checked_from=checked_from,
+            checked_to=checked_to,
+            uploaded_from=uploaded_from,
+            uploaded_to=uploaded_to,
+            channel_name=channel_name,
+            clip_title=clip_title,
+            work_title=work_title,
+            rights_holder_name=rights_holder_name,
+            platform=platform,
+            limit=min(limit, 1000),
+        )
+        filtered = service.filter_rows(rows, filters)
+        return {
+            "filters": {
+                "checked_from": checked_from,
+                "checked_to": checked_to,
+                "uploaded_from": uploaded_from,
+                "uploaded_to": uploaded_to,
+                "channel_name": channel_name,
+                "clip_title": clip_title,
+                "work_title": work_title,
+                "rights_holder_name": rights_holder_name,
+                "platform": platform,
+                "group_by": group_by,
+                "limit": min(limit, 1000),
+            },
+            "summary": service.summarize(filtered),
+            "groups": service.group_rows(filtered, group_by=group_by),
+            "rows": filtered,
+        }
+
+    @app.post("/api/admin/b2/looker-studio/generate-send")
+    def create_b2_looker_delivery_stub(
+        request: B2AnalyticsQuery,
+        _: None = Depends(_check_auth),
+    ) -> dict[str, Any]:
+        if not request.rights_holder_name:
+            raise HTTPException(status_code=400, detail="rights_holder_name is required")
+        repo = build_b2_supabase_repository()
+        service = build_b2_analytics_service()
+        filters = B2AnalyticsFilters(
+            checked_from=datetime.fromisoformat(request.checked_from).date() if request.checked_from else None,
+            checked_to=datetime.fromisoformat(request.checked_to).date() if request.checked_to else None,
+            uploaded_from=datetime.fromisoformat(request.uploaded_from).date() if request.uploaded_from else None,
+            uploaded_to=datetime.fromisoformat(request.uploaded_to).date() if request.uploaded_to else None,
+            channel_name=request.channel_name or None,
+            clip_title=request.clip_title or None,
+            work_title=request.work_title or None,
+            rights_holder_name=request.rights_holder_name or None,
+            platform=request.platform or None,
+        )
+        rows = repo.list_clip_reports_filtered(
+            checked_from=request.checked_from,
+            checked_to=request.checked_to,
+            uploaded_from=request.uploaded_from,
+            uploaded_to=request.uploaded_to,
+            channel_name=request.channel_name,
+            clip_title=request.clip_title,
+            work_title=request.work_title,
+            rights_holder_name=request.rights_holder_name,
+            platform=request.platform,
+            limit=1000,
+        )
+        filtered = service.filter_rows(rows, filters)
+        rights_holders = repo.list_rights_holders(enabled_only=False)
+        target = next(
+            (row for row in rights_holders if row.get("rights_holder_name") == request.rights_holder_name),
+            None,
+        )
+        payload = {
+            "run_id": f"looker-{datetime.now(KST).strftime('%Y%m%d%H%M%S')}",
+            "status": "stub_only",
+            "rights_holder_name": request.rights_holder_name,
+            "recipient_email": target.get("email") if target else None,
+            "existing_looker_studio_url": target.get("looker_studio_url") if target else None,
+            "summary": service.summarize(filtered),
+            "group_preview": service.group_rows(filtered, group_by=request.group_by)[:10],
+            "filters": request.model_dump(),
+            "next_step": "실제 Looker Studio 생성 API와 메일 발송 API 명세를 받으면 이 payload로 자동화 연결",
+        }
+        log_row = repo.create_looker_delivery_stub(payload)
+        return {"stub": payload, "log_row": log_row}
+
+    @app.post("/api/admin/b2/run-report-stub")
+    def run_b2_report_stub(
+        request: B2AdminRunRequest,
+        _: None = Depends(_check_auth),
+    ) -> dict[str, Any]:
+        return _invoke_lambda(
+            "lambda.b2_weekly_report_handler",
+            {"source": request.source, "send_notifications": request.send_notifications},
+        )
 
     @app.get("/a3/apply", response_class=HTMLResponse)
     def a3_apply_page() -> str:

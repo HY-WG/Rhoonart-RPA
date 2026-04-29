@@ -134,6 +134,7 @@ class Settings:
 
         self.SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
         self.SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+        self.SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
         self.INTEGRATION_DASHBOARD_DB_TYPE = os.environ.get(
             "INTEGRATION_DASHBOARD_DB_TYPE",
             "memory",

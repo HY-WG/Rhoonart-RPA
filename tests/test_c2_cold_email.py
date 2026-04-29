@@ -46,6 +46,7 @@ def test_c2_sends_updates_and_skips_missing_email() -> None:
         sender_name="Rhoonart",
         batch_size=2,
         platform="youtube",
+        dry_run=False,
     )
 
     assert result == {
@@ -69,8 +70,29 @@ def test_c2_marks_bounced_on_send_failure() -> None:
         sender_name="Rhoonart",
         batch_size=10,
         platform="youtube",
+        dry_run=False,
     )
 
     assert result["sent"] == 0
     assert result["bounced"] == 1
     assert repo.status_updates == [("one", EmailSentStatus.BOUNCED.value)]
+
+
+def test_c2_defaults_to_dry_run_without_sending_email() -> None:
+    repo = FakeLeadRepo([make_lead("one", email="one@example.com")])
+    email_notifier = FakeNotifier(send_result=True)
+
+    result = run(
+        lead_repo=repo,
+        log_repo=FakeLogRepo(),
+        email_notifier=email_notifier,
+        slack_notifier=FakeNotifier(send_result=True),
+        sender_name="Rhoonart",
+        batch_size=10,
+        platform="youtube",
+    )
+
+    assert result["dry_run"] is True
+    assert result["would_send"] == 1
+    assert repo.status_updates == []
+    assert email_notifier.sent == []

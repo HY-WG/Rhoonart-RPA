@@ -49,6 +49,7 @@ def run(
     genre: Optional[Genre] = None,
     min_monthly_views: int = 0,
     platform: Optional[str] = None,
+    dry_run: bool = True,
 ) -> dict:
     """C-2 실행.
 
@@ -72,6 +73,16 @@ def run(
 
     result = SendResult(skipped_by_filter=max(0, len(candidates) - batch_size))
     targets = candidates[:batch_size]
+
+    if dry_run:
+        log.info("[C-2] dry_run=True 이므로 실제 메일 발송과 상태 업데이트를 수행하지 않습니다.")
+        preview = result.to_dict()
+        preview["dry_run"] = True
+        preview["target_count"] = len(targets)
+        preview["would_send"] = sum(1 for lead in targets if lead.email)
+        preview["would_skip_no_email"] = sum(1 for lead in targets if not lead.email)
+        preview["target_channels"] = [lead.channel_name for lead in targets]
+        return preview
 
     for lead in targets:
         if not lead.email:

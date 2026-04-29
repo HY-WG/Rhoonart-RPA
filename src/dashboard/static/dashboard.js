@@ -92,6 +92,10 @@ function badge(taskId) {
   return `<span class="task-badge task-badge--${cat.toLowerCase()}">${esc(taskId)}</span>`;
 }
 
+function findLatestRun(taskId) {
+  return state.runs.find(run => run.task_id === taskId) || null;
+}
+
 // ── 탭 렌더 ───────────────────────────────────────────────────────────────
 function renderTabs() {
   return `<nav class="tabs" role="tablist">
@@ -110,6 +114,14 @@ function renderTaskCard(task) {
   const related = Object.entries(task.sheet_links || {}).filter(([k, v]) => k !== "로그시트" && v);
   const logLink = task.sheet_links?.["로그시트"] || "";
   const cat = task.task_id.split("-")[0].toLowerCase();
+  const latestRun = findLatestRun(task.task_id);
+  const latestBody = latestRun?.result?.body || latestRun?.result || {};
+  const b2Timing = task.task_id === "B-2" && (latestBody.crawl_seconds !== undefined || latestBody.elapsed_seconds !== undefined)
+    ? `<div class="chip-row">
+        ${latestBody.crawl_seconds !== undefined ? chip(`crawl_seconds: ${latestBody.crawl_seconds}s`, "success") : ""}
+        ${latestBody.elapsed_seconds !== undefined ? chip(`elapsed_seconds: ${latestBody.elapsed_seconds}s`, "success") : ""}
+      </div>`
+    : "";
 
   return `
 <article class="task-card" data-task-id="${esc(task.task_id)}">
@@ -124,7 +136,9 @@ function renderTaskCard(task) {
       ${(task.targets || []).map(t => chip(t)).join("")}
       ${chip(`트리거: ${task.trigger_mode}`)}
       ${task.requires_approval ? chip("승인 필요", "warn") : ""}
+      ${latestRun ? chip(`최근 실행: ${latestRun.status}`, latestRun.status) : ""}
     </div>
+    ${b2Timing}
 
     ${related.length ? `
     <div class="link-row">
@@ -276,11 +290,14 @@ function renderDetailPanel() {
       <div class="empty">좌측에서 작업을 실행하거나 실행 기록을 클릭하면 결과가 표시됩니다.</div>
     </section>`;
   }
+  const selectedBody = state.selectedRun?.result?.body || state.selectedRun?.result || {};
   return `<section class="panel"><h2 class="panel-h2">선택한 실행</h2>
     <div class="chip-row">
       ${chip(state.selectedRun.title || "")}
       ${chip(state.selectedRun.status || "", state.selectedRun.status)}
       ${chip(`모드: ${state.selectedRun.execution_mode || ""}`)}
+      ${selectedBody.crawl_seconds !== undefined ? chip(`crawl_seconds: ${selectedBody.crawl_seconds}s`, "success") : ""}
+      ${selectedBody.elapsed_seconds !== undefined ? chip(`elapsed_seconds: ${selectedBody.elapsed_seconds}s`, "success") : ""}
     </div>
     <pre class="result-pre">${esc(JSON.stringify(state.selectedRun, null, 2))}</pre>
   </section>`;

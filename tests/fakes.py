@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.models import NaverClipApplicant
+from src.models import ClipReport, ContentCatalogItem, NaverClipApplicant
 
 
 class FakeNotifier:
@@ -118,11 +118,22 @@ class FakePerformanceRepo:
         self,
         *,
         contents: list[tuple[str, str]] | None = None,
+        catalog: list[ContentCatalogItem] | None = None,
         rights_holders: list[Any] | None = None,
     ) -> None:
-        self.contents = list(contents or [])
+        self.catalog = list(catalog or [])
+        self.contents = list(contents or [(item.identifier, item.content_name) for item in self.catalog])
         self.rights_holders = list(rights_holders or [])
         self.upserted_stats: list[Any] = []
+        self.replaced_reports: list[ClipReport] = []
+
+    def get_content_catalog(self) -> list[ContentCatalogItem]:
+        if self.catalog:
+            return list(self.catalog)
+        return [
+            ContentCatalogItem(identifier=identifier, content_name=content_name)
+            for identifier, content_name in self.contents
+        ]
 
     def get_content_list(self) -> list[tuple[str, str]]:
         return list(self.contents)
@@ -130,6 +141,10 @@ class FakePerformanceRepo:
     def upsert_channel_stats(self, stats: list[Any]) -> int:
         self.upserted_stats.extend(stats)
         return len(stats)
+
+    def replace_clip_reports(self, reports: list[ClipReport]) -> int:
+        self.replaced_reports = list(reports)
+        return len(reports)
 
     def get_rights_holders(self) -> list[Any]:
         return list(self.rights_holders)
@@ -140,6 +155,9 @@ class FakeWorksheet:
         self._headers = headers
         self._rows = [list(r) for r in rows]
         self.appended: list[list[Any]] = []
+        self.updated_ranges: list[tuple[str, list[list[Any]]]] = []
+        self.cleared_ranges: list[str] = []
+        self.row_count = max(len(self._rows) + 1, 1)
 
     def row_values(self, index: int) -> list[str]:
         if index != 1:
@@ -149,7 +167,7 @@ class FakeWorksheet:
     def get_all_values(self) -> list[list[str]]:
         return [list(self._headers), *[list(row) for row in self._rows]]
 
-    def get_all_records(self) -> list[dict[str, Any]]:
+    def get_all_records(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         """헤더를 키로 사용하여 각 행을 dict로 반환."""
         result = []
         for row in self._rows:
@@ -161,6 +179,21 @@ class FakeWorksheet:
         """행 추가 (테스트 검증용 appended 리스트에도 기록)."""
         self._rows.append(list(row))
         self.appended.append(list(row))
+        self.row_count = max(self.row_count, len(self._rows) + 1)
+
+    def append_rows(self, rows: list[list[Any]], **kwargs: Any) -> None:
+        for row in rows:
+            self.append_row(row, **kwargs)
+
+    def update(self, range_name: str, values: list[list[Any]], **kwargs: Any) -> None:
+        self.updated_ranges.append((range_name, values))
+        if range_name == "A1:I1" and values:
+            self._headers = list(values[0])
+
+    def batch_clear(self, ranges: list[str]) -> None:
+        self.cleared_ranges.extend(ranges)
+        self._rows = []
+        self.row_count = 1
 
 
 class FakeSpreadsheet:

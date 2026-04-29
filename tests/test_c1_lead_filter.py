@@ -139,6 +139,7 @@ def test_c1_lead_has_correct_url_with_handle(monkeypatch) -> None:
     assert lead.channel_url == "https://www.youtube.com/@drama_clips"
     assert lead.channel_id == "ch-1"
     assert lead.platform == "youtube"
+    assert lead.tier == "A"
 
 
 def test_c1_lead_uses_channel_id_url_when_no_handle(monkeypatch) -> None:

@@ -5,7 +5,7 @@ from typing import Optional
 from ...models import (
     Creator, OnboardingStatus,
     WorkRequest, RequestStatus,
-    ChannelStat, RightsHolder,
+    ChannelStat, RightsHolder, ContentCatalogItem, ClipReport,
     Lead, LeadFilter,
     LogEntry,
     NaverClipApplicant,
@@ -51,12 +51,18 @@ class INaverClipRepository(ABC):
 
 class IPerformanceRepository(ABC):
     @abstractmethod
+    def get_content_catalog(self) -> list[ContentCatalogItem]: ...
+
+    @abstractmethod
     def get_content_list(self) -> list[tuple[str, str]]:
         """(식별코드, 콘텐츠명) 튜플 목록 반환."""
         ...
 
     @abstractmethod
     def upsert_channel_stats(self, stats: list[ChannelStat]) -> int: ...
+
+    @abstractmethod
+    def replace_clip_reports(self, reports: list[ClipReport]) -> int: ...
 
     @abstractmethod
     def get_rights_holders(self) -> list[RightsHolder]:

@@ -32,5 +32,8 @@ pytest==8.3.5
 # Notion API (C-3 가이드라인 페이지 생성)
 notion-client==2.2.1
 
+# AI Agent
+anthropic>=0.40.0
+
 # Optional future migration target
 # supabase==2.4.0
