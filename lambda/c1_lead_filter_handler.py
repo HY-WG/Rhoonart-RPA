@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """C-1 Lambda 엔트리포인트 — 리드 발굴 (YouTube Shorts 채널 탐색기).
 
-트리거: EventBridge Cron — cron(0 1 1 * ? *) (매월 1일 10시 KST)
+트리거 1: EventBridge Cron — cron(0 1 1 * ? *) (매월 1일 10시 KST)
+트리거 2: work_threshold — 신규 작품 등록 후 7일(2주) 이내 작품사용신청이 5개 이하일 시 자동 호출
+          event 구조: {"source": "work_threshold", "work_title": "작품명", "work_id": "..."}
+
 
 탐색 구조:
   Layer A — 채널명 키워드 직접 검색 (type=channel)
@@ -36,7 +39,7 @@ from src.core.error_handler import task_handler
 from src.core.notifiers.slack_notifier import SlackNotifier
 from src.core.repositories.sheet_repository import SheetLeadRepository, SheetLogRepository
 from src.core.logger import CoreLogger
-from src.handlers.c1_lead_filter import run as c1_run, TASK_ID, TASK_NAME
+from src.handlers.c1_lead_filter import run as c1_run, run_for_work as c1_run_for_work, TASK_ID, TASK_NAME
 from src.models.log_entry import TriggerType
 
 log = CoreLogger(__name__)
@@ -77,9 +80,45 @@ def _build_deps():
 
 
 def handler(event: dict, context) -> dict:
-    """Lambda 핸들러 진입점."""
-    lead_repo, log_repo, slack_notifier = _build_deps()
+    """Lambda 핸들러 진입점.
 
+    event["source"] 에 따라 트리거 종류를 구분합니다.
+      - "work_threshold": 특정 작품의 채널 부족 → 리드발굴 + Slack 알림
+        필수 필드: event["work_title"] (str)
+        선택 필드: event["lead_sheet_url"] (str, Slack 링크용)
+      - 그 외 (기본, cron): 월간 전체 탐색
+    """
+    lead_repo, log_repo, slack_notifier = _build_deps()
+    source = event.get("source", "cron")
+
+    if source == "work_threshold":
+        work_title = event.get("work_title", "알 수 없는 작품")
+        lead_sheet_url = event.get("lead_sheet_url", "")
+
+        @task_handler(
+            task_id=TASK_ID,
+            task_name=TASK_NAME,
+            trigger_type=TriggerType.HTTP,
+            trigger_source=f"work_threshold:{work_title}",
+            log_repo=log_repo,
+            slack_notifier=slack_notifier,
+        )
+        def _run_threshold(*_):
+            return c1_run_for_work(
+                work_title=work_title,
+                lead_repo=lead_repo,
+                log_repo=log_repo,
+                slack_notifier=slack_notifier,
+                api_key=YOUTUBE_API_KEY,
+                seed_sheet_id=SEED_SHEET_ID,
+                lead_sheet_url=lead_sheet_url,
+                seed_sheet_gid=SEED_SHEET_GID,
+                max_channels=MAX_CHANNELS,
+            )
+
+        return _run_threshold(event, context)
+
+    # 기본: 월간 전체 탐색 (cron 또는 수동)
     @task_handler(
         task_id=TASK_ID,
         task_name=TASK_NAME,

@@ -41,7 +41,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.error_handler import task_handler
 from src.core.notifiers.email_notifier import EmailNotifier
 from src.core.notifiers.slack_notifier import SlackNotifier
-from src.core.repositories.sheet_repository import SheetPerformanceRepository, SheetLogRepository
+from src.core.repositories.b2_sheet_performance_repository import B2SheetPerformanceRepository
+from src.core.repositories.sheet_repository import SheetLogRepository
 from src.core.logger import CoreLogger
 from src.handlers.b2_weekly_report import run as b2_run, TASK_ID, TASK_NAME
 from src.models.log_entry import TriggerType
@@ -73,7 +74,7 @@ LOOKER_DASHBOARDS: dict[str, str] = {
 # 콘텐츠 관리 시트 탭명
 TAB_CONTENT = os.environ.get("TAB_CONTENT", "콘텐츠 목록")    # gid=161689321
 TAB_STATS   = os.environ.get("TAB_STATS",   "성과 데이터")
-TAB_RIGHTS  = os.environ.get("TAB_RIGHTS",  "작품 관리")       # gid=567622906
+TAB_RIGHTS  = os.environ.get("TAB_RIGHTS",  "A3_작품 관리의 사본")  # gid=567622906
 TAB_LOG     = os.environ.get("TAB_LOG",     "로그")
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -86,10 +87,24 @@ def _build_deps():
     perf_sh    = gc.open_by_key(PERFORMANCE_SHEET_ID)
     log_sh     = gc.open_by_key(LOG_SHEET_ID)
 
-    perf_repo = SheetPerformanceRepository(
-        content_ws=content_sh.worksheet(TAB_CONTENT),
+    content_tab = os.environ.get("TAB_CONTENT_B2", "A3_작품리스트의 사본")
+    try:
+        content_ws = content_sh.worksheet(content_tab)
+    except Exception:
+        content_ws = content_sh.worksheet(TAB_CONTENT)
+
+    management_ws = None
+    management_tab = os.environ.get("TAB_CONTENT_MANAGEMENT", "A3_작품 관리의 사본")
+    try:
+        management_ws = content_sh.worksheet(management_tab)
+    except Exception:
+        management_ws = None
+
+    perf_repo = B2SheetPerformanceRepository(
+        content_ws=content_ws,
         stats_ws=perf_sh.worksheet(TAB_STATS),
         rights_ws=content_sh.worksheet(TAB_RIGHTS),
+        management_ws=management_ws,
         looker_dashboards=LOOKER_DASHBOARDS,
     )
     log_repo = SheetLogRepository(log_sh.worksheet(TAB_LOG))

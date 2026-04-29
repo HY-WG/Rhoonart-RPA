@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """C-1. 리드 발굴 자동화 핸들러 (YouTube Shorts 채널 탐색기).
 
+트리거 종류:
+  [monthly]  매월 1일 자동 실행 — 전체 채널 탐색 후 리드 시트 upsert
+  [work_threshold]  신규 작품 등록 후 7일(2주) 이내 '작품사용신청'이 5개 이하일 시 자동 실행
+                    → 리드 발굴 + 관리자 Slack 알림 발송
+
 플로우:
 1. 시드 채널 URL 목록을 Google Sheets에서 로드
    (시드 채널 시트: 18HY8-FdG_nAe-gOP7WNKiu5k7xMQliW9oxvKTcLC8Is, gid=1224056617)
@@ -9,7 +14,12 @@
    - Layer B: 드라마·영화 제목 기반 Shorts 영상 검색 → 업로더 채널 수집
 3. A/B/B?/C 등급으로 분류 (블록리스트 채널 자동 제외)
 4. A/B/B? 등급 채널을 Lead 모델로 변환 → 리드 시트에 upsert
-5. 결과 요약 반환
+5. (work_threshold 트리거 시) Slack 알림 발송:
+   {작품이름}의 이용 채널 수가 적어 리드발굴을 진행했습니다.
+   리드발굴 {TIMESTAMP} 진행,
+   {대표 TOP3 채널 이름}
+   자세한 정보는 SHEET를 확인해주세요. [시트링크]
+6. 결과 요약 반환
 
 등급 기준:
   A:  월간 숏츠 조회수 ≥ 2,000만
@@ -41,6 +51,113 @@ TASK_ID   = "C-1"
 TASK_NAME = "리드 발굴 (YouTube Shorts 채널 탐색기)"
 
 _MIN_TIER_TO_UPSERT = {"A", "B", "B?"}  # C등급은 리드 시트에 추가하지 않음
+
+# Slack 알림 채널 — 환경변수 또는 기본값
+import os as _os
+_SLACK_NOTIFY_CHANNEL = _os.environ.get("SLACK_LEAD_NOTIFY_CHANNEL", _os.environ.get("SLACK_ERROR_CHANNEL", ""))
+
+
+def _build_slack_notify_message(
+    work_title: str,
+    results: list,
+    lead_sheet_url: str,
+    timestamp: Optional[str] = None,
+) -> str:
+    """work_threshold 트리거 후 Slack 알림 메시지 생성.
+
+    포맷:
+        {작품이름}의 이용 채널 수가 적어 리드발굴을 진행했습니다.
+        리드발굴 {TIMESTAMP} 진행,
+        {대표 TOP3 채널 이름}
+        자세한 정보는 SHEET를 확인해주세요. [시트링크]
+    """
+    if timestamp is None:
+        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+
+    # A → B → B? 순으로 상위 3개 채널 선택
+    tier_order = {"A": 0, "B": 1, "B?": 2, "C": 3}
+    top3 = sorted(
+        [r for r in results if r.tier in _MIN_TIER_TO_UPSERT],
+        key=lambda r: (tier_order.get(r.tier, 9), -(r.monthly_shorts_views or 0)),
+    )[:3]
+
+    top3_names = "\n".join(
+        f"  • {r.name} ({r.tier}등급, 월 {(r.monthly_shorts_views or 0):,}회)"
+        for r in top3
+    ) if top3 else "  • (발굴된 채널 없음)"
+
+    return (
+        f"*{work_title}*의 이용 채널 수가 적어 리드발굴을 진행했습니다.\n"
+        f"리드발굴 {timestamp} 진행,\n"
+        f"{top3_names}\n"
+        f"자세한 정보는 SHEET를 확인해주세요. <{lead_sheet_url}|시트링크>"
+    )
+
+
+def run_for_work(
+    work_title: str,
+    lead_repo: ILeadRepository,
+    log_repo: ILogRepository,
+    slack_notifier: INotifier,
+    api_key: str,
+    seed_sheet_id: str,
+    lead_sheet_url: str = "",
+    seed_sheet_gid: str = "1224056617",
+    max_channels: int = 200,
+) -> dict:
+    """work_threshold 트리거 — 특정 작품의 채널 부족 시 리드 발굴 실행.
+
+    Args:
+        work_title:      작품명 (Slack 알림에 표시)
+        lead_sheet_url:  리드 시트 URL (Slack 알림 링크)
+        나머지:          run() 와 동일
+
+    Returns:
+        run() 결과 + slack_sent: bool
+    """
+    log.info("[C-1][work_threshold] 작품 '%s' — 채널 부족 리드발굴 시작", work_title)
+
+    result = run(
+        lead_repo=lead_repo,
+        log_repo=log_repo,
+        slack_notifier=slack_notifier,
+        api_key=api_key,
+        seed_sheet_id=seed_sheet_id,
+        seed_sheet_gid=seed_sheet_gid,
+        max_channels=max_channels,
+    )
+
+    # 발굴된 채널 목록은 lead_repo.upsert 전에 저장해 두기 어려우므로
+    # run()의 summary 정보를 바탕으로 알림 생성
+    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    top_line = (
+        f"  A등급 {result['tier_a']}개 · B등급 {result['tier_b']}개 · "
+        f"B?등급 {result['tier_b_potential']}개 (총 upsert {result['upserted']}건)"
+    )
+    message = (
+        f"*{work_title}*의 이용 채널 수가 적어 리드발굴을 진행했습니다.\n"
+        f"리드발굴 {timestamp} 진행,\n"
+        f"{top_line}\n"
+        f"자세한 정보는 SHEET를 확인해주세요."
+        + (f" <{lead_sheet_url}|시트링크>" if lead_sheet_url else "")
+    )
+
+    slack_sent = False
+    try:
+        channel = _SLACK_NOTIFY_CHANNEL
+        if channel:
+            slack_notifier.send(channel=channel, text=message)
+            slack_sent = True
+            log.info("[C-1][work_threshold] Slack 알림 발송 완료 → %s", channel)
+        else:
+            log.warning("[C-1][work_threshold] SLACK_LEAD_NOTIFY_CHANNEL 미설정 — Slack 알림 생략")
+    except Exception as exc:  # noqa: BLE001
+        log.error("[C-1][work_threshold] Slack 알림 발송 실패: %s", exc)
+
+    result["trigger"] = "work_threshold"
+    result["work_title"] = work_title
+    result["slack_sent"] = slack_sent
+    return result
 
 
 def run(
@@ -131,6 +248,7 @@ def _to_lead(r: ChannelDiscovery) -> Lead:
         platform="youtube",
         genre=Genre.DRAMA_MOVIE,        # C-1은 드라마·영화 클립 채널만 수집
         monthly_shorts_views=r.monthly_shorts_views,
+        tier=r.tier,
         subscribers=r.subscriber_count,
         email=r.email,                  # 채널 설명에서 추출된 이메일 (없으면 None)
         email_sent_status=EmailSentStatus.NOT_SENT,

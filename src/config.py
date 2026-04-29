@@ -63,7 +63,7 @@ class Settings:
 
         self.TAB_CONTENT = os.environ.get("TAB_CONTENT", "\ucf58\ud150\uce20 \ubaa9\ub85d")
         self.TAB_STATS = os.environ.get("TAB_STATS", "\uc131\uacfc \uad00\ub9ac")
-        self.TAB_RIGHTS = os.environ.get("TAB_RIGHTS", "\uc791\ud488 \uad00\ub9ac")
+        self.TAB_RIGHTS = os.environ.get("TAB_RIGHTS", "A3_\uc791\ud488 \uad00\ub9ac\uc758 \uc0ac\ubcf8")
         self.TAB_LOG = os.environ.get("TAB_LOG", "\ub85c\uadf8 \uae30\ub85d")
         self.TAB_LEADS = os.environ.get("TAB_LEADS", "\ub9ac\ub4dc")
         self.TAB_NAVER_FORM = os.environ.get("TAB_NAVER_FORM", "\uc124\ubb38\uc9c0 \uc751\ub2f5 \uc2dc\ud2b81")
@@ -116,6 +116,10 @@ class Settings:
         self.LABELIVE_ADMIN_URL = os.environ.get(
             "LABELIVE_ADMIN_URL",
             "https://labelive.io",
+        )
+        self.CONFIG_ADMIN_EMAIL = os.environ.get(
+            "CONFIG_ADMIN_EMAIL",
+            "hoyoungy2@gmail.com",
         )
         self.NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
         self.NOTION_GUIDELINE_PARENT_PAGE_ID = os.environ.get(

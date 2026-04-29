@@ -29,6 +29,9 @@ class IntegrationTaskSpec:
     requires_approval: bool = False
     supports_dry_run: bool = True
     real_run_warning: str = ""
+    sheet_links: dict[str, str] = field(default_factory=dict)
+    # 탭 그룹: "ops_admin" | "homepage_auto"
+    tab_group: str = "ops_admin"
 
 
 @dataclass
