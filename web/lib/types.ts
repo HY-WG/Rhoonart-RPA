@@ -46,6 +46,21 @@ export interface ChannelVideo {
   thumbnail_emoji: string;
 }
 
+export interface ApprovalRecord {
+  approval_id: string;
+  task_id: string;
+  trace_id: string;
+  summary: string;
+  risk_level: string;
+  preview: Record<string, unknown>;
+  requested_at: string;
+  status?: string;
+  decided_at?: string | null;
+  decided_by?: string;
+  decision_note?: string;
+  execution_result?: Record<string, unknown> | null;
+}
+
 export interface ResourceSummary {
   google_credentials_file: string;
   content_sheet_id: string;

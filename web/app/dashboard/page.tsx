@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { fetchRuns } from "@/lib/api";
+import { fetchRuns, fetchPendingApprovals } from "@/lib/api";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { relativeTime, categoryBadge, getCategoryFromId, cn } from "@/lib/utils";
 import type { RunStatus } from "@/lib/types";
@@ -30,6 +31,12 @@ export default function DashboardHome() {
     refetchInterval: 5000,
   });
 
+  const { data: pendingApprovals = [] } = useQuery({
+    queryKey: ["approvals", "pending"],
+    queryFn: fetchPendingApprovals,
+    refetchInterval: 5000,
+  });
+
   const counts: Record<RunStatus, number> = {
     queued: 0,
     running: 0,
@@ -53,6 +60,22 @@ export default function DashboardHome() {
           })}
         </p>
       </div>
+
+      {/* 승인 대기 배너 */}
+      {pendingApprovals.length > 0 && (
+        <Link
+          href="/dashboard/approvals"
+          className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 hover:bg-amber-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-amber-500 text-lg">⚠️</span>
+            <span className="text-sm font-semibold text-amber-800">
+              승인 대기 {pendingApprovals.length}건 — 고위험 작업 실행 전 검토가 필요합니다.
+            </span>
+          </div>
+          <span className="text-xs text-amber-600 font-medium">검토하기 →</span>
+        </Link>
+      )}
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

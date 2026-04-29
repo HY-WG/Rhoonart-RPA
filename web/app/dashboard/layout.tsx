@@ -4,6 +4,7 @@ const NAV = [
   { href: "/dashboard",               label: "홈",           icon: "🏠" },
   { href: "/dashboard/ops-admin",     label: "운영지원 어드민", icon: "⚙️" },
   { href: "/dashboard/homepage-auto", label: "홈페이지 자동화", icon: "🌐" },
+  { href: "/dashboard/approvals",     label: "승인 대기",      icon: "✅" },
   { href: "/dashboard/channels",      label: "내 채널",        icon: "📺" },
   { href: "/dashboard/runs",          label: "실행 기록",       icon: "📋" },
   { href: "/dashboard/resources",     label: "환경 요약",       icon: "🔧" },
