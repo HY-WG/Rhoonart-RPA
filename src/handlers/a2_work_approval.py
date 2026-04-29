@@ -73,6 +73,17 @@ def parse_slack_message(text: str) -> tuple[str, str]:
     return channel_name, work_title
 
 
+def parse_manual_request(channel_name: str, work_title: str) -> tuple[str, str]:
+    """홈페이지/수동 endpoint용 요청값을 검증한다."""
+    normalized_channel = channel_name.strip()
+    normalized_work = work_title.strip()
+    if not normalized_channel:
+        raise ValueError("channel_name is required")
+    if not normalized_work:
+        raise ValueError("work_title is required")
+    return normalized_channel, normalized_work
+
+
 def run(
     slack_channel_id: str,
     slack_message_ts: str,

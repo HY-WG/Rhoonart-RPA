@@ -122,7 +122,15 @@ def _adapter_b2(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, An
 
     handler = importlib.import_module("lambda.b2_weekly_report_handler").handler
     log("B-2 네이버 클립 성과보고를 real-run으로 실행합니다.")
-    return _normalize_result(handler({"source": run.payload.get("source", "dashboard")}, None))
+    return _normalize_result(
+        handler(
+            {
+                "source": run.payload.get("source", "dashboard"),
+                "send_notifications": bool(run.payload.get("send_notifications", True)),
+            },
+            None,
+        )
+    )
 
 
 def _adapter_c1(run: IntegrationRun, log: Callable[[str], None]) -> dict[str, Any]:
@@ -394,9 +402,16 @@ class IntegrationTaskService:
                         "**구현내용:** Naver Clip GraphQL API로 해시태그별 클립 조회수를 자동 수집 → Google Sheets 갱신 → "
                         "권리사별 Looker Studio 대시보드 링크를 이메일 자동 발송."
                     ),
-                    default_payload={"source": "dashboard"},
+                    default_payload={
+                        "source": "dashboard",
+                        "send_notifications": False,
+                    },
                     targets=["Google Sheets", "Email", "Slack"],
-                    real_run_warning="성과 집계와 권리사 메일 발송이 실제로 수행됩니다.",
+                    real_run_warning=(
+                        "기본 payload는 send_notifications=false 입니다.\n"
+                        "크롤링+시트 업데이트만 측정하려면 그대로 실행하고,\n"
+                        "권리사 메일까지 보내려면 send_notifications=true 로 변경하세요."
+                    ),
                     sheet_links={
                         "콘텐츠 시트": _sheet_url(settings.CONTENT_SHEET_ID),
                         "작품 관리 시트": _sheet_url(settings.CONTENT_SHEET_ID),

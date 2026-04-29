@@ -110,6 +110,35 @@ def test_dashboard_routes_expose_task_and_run_state() -> None:
     assert detail_response.json()["execution_mode"] == "dry_run"
     assert detail_response.json()["result"]["ok"] is True
 
+    page_response = client.get("/")
+    assert page_response.status_code == 200
+    assert "dashboard.js" in page_response.text
+
+    asset_response = client.get("/assets/dashboard.js")
+    assert asset_response.status_code == 200
+    assert "내 채널" in asset_response.text
+
+
+def test_dashboard_b2_task_exposes_no_mail_measurement_defaults() -> None:
+    service = IntegrationTaskService(executor=ThreadPoolExecutor(max_workers=1))
+    b2_spec = next(spec for spec in service.list_task_specs() if spec.task_id == "B-2")
+
+    assert b2_spec.default_payload["send_notifications"] is False
+    assert "send_notifications=false" in b2_spec.real_run_warning
+
+    app = build_app(service=service)
+    client = TestClient(app)
+
+    tasks_response = client.get("/api/integration/tasks")
+    assert tasks_response.status_code == 200
+    b2_payload = next(task for task in tasks_response.json() if task["task_id"] == "B-2")
+    assert b2_payload["default_payload"]["send_notifications"] is False
+
+    asset_response = client.get("/assets/dashboard.js")
+    assert asset_response.status_code == 200
+    assert "crawl_seconds" in asset_response.text
+    assert "elapsed_seconds" in asset_response.text
+
 
 def test_runner_marks_business_failure_as_failed() -> None:
     service = IntegrationTaskService(executor=ThreadPoolExecutor(max_workers=1))

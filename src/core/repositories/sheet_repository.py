@@ -22,7 +22,7 @@ from ..interfaces.repository import (
 from ...models import (
     Creator, OnboardingStatus,
     WorkRequest, RequestStatus,
-    ChannelStat, RightsHolder,
+    ChannelStat, RightsHolder, ContentCatalogItem, ClipReport,
     Lead, LeadFilter,
     LogEntry,
     NaverClipApplicant,
@@ -161,6 +161,12 @@ class SheetPerformanceRepository(IPerformanceRepository):
         log.info("콘텐츠 목록 조회: %d건", len(result))
         return result
 
+    def get_content_catalog(self) -> list[ContentCatalogItem]:
+        return [
+            ContentCatalogItem(identifier=identifier, content_name=name)
+            for identifier, name in self.get_content_list()
+        ]
+
     def upsert_channel_stats(self, stats: list[ChannelStat]) -> int:
         existing = {row["channel_id"]: i + 2 for i, row in enumerate(_rows_to_dicts(self._stats_ws))}
         updated = 0
@@ -179,6 +185,10 @@ class SheetPerformanceRepository(IPerformanceRepository):
             updated += 1
         log.info("채널 통계 upsert 완료: %d건", updated)
         return updated
+
+    def replace_clip_reports(self, reports: list[ClipReport]) -> int:
+        del reports
+        return 0
 
     def get_rights_holders(self) -> list[RightsHolder]:
         """'작품 관리' 탭에서 권리사 목록 반환.
@@ -214,6 +224,7 @@ class SheetPerformanceRepository(IPerformanceRepository):
 class SheetLeadRepository(ILeadRepository):
     def __init__(self, ws: gspread.Worksheet) -> None:
         self._ws = ws
+        self._ensure_tier_column()
 
     def upsert_leads(self, leads: list[Lead]) -> int:
         all_rows = _rows_to_dicts(self._ws)
@@ -233,14 +244,16 @@ class SheetLeadRepository(ILeadRepository):
                     lead.platform, lead.genre.value, lead.monthly_shorts_views,
                     lead.subscribers or "", lead.email or "",
                     preserved_status, lead.discovered_at.isoformat(), "",
+                    lead.tier or "",
                 ]
-                self._ws.update(f"A{row_num}:K{row_num}", [row_data])
+                self._ws.update(f"A{row_num}:L{row_num}", [row_data])
             else:
                 row_data = [
                     lead.channel_id, lead.channel_name, lead.channel_url,
                     lead.platform, lead.genre.value, lead.monthly_shorts_views,
                     lead.subscribers or "", lead.email or "",
                     lead.email_sent_status.value, lead.discovered_at.isoformat(), "",
+                    lead.tier or "",
                 ]
                 self._ws.append_row(row_data)
                 new_count += 1
@@ -283,10 +296,19 @@ class SheetLeadRepository(ILeadRepository):
             subscribers=int(row["subscribers"]) if row.get("subscribers") else None,
             email=row.get("email") or None,
             email_sent_status=EmailSentStatus(row.get("email_sent_status", "미발송")),
+            tier=row.get("tier") or None,
         )
 
     def _col_index(self, header: str) -> int:
         return self._ws.row_values(1).index(header) + 1
+
+    def _ensure_tier_column(self) -> None:
+        headers = self._ws.row_values(1)
+        if "tier" in headers:
+            return
+        next_col = len(headers) + 1 if headers else 1
+        self._ws.add_cols(1)
+        self._ws.update_cell(1, next_col, "tier")
 
 
 class SheetLogRepository(ILogRepository):

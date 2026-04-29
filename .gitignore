@@ -16,3 +16,11 @@ scripts/*.png
 scripts/*.txt
 tmp_*.json
 tmp_*.txt
+tmp_*.py
+tmp_*.err
+tmp_*.out
+tmp_*.log
+tmp_run_*.py
+tmp_server*
+tmp_dashboard*
+tmp_b2*
