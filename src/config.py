@@ -110,6 +110,7 @@ class Settings:
         self.LOOKER_URL_WAVVE = os.environ.get("LOOKER_URL_WAVVE", "")
         self.LOOKER_URL_PANSCINEMA = os.environ.get("LOOKER_URL_PANSCINEMA", "")
         self.LOOKER_URL_RIGHTS = os.environ.get("LOOKER_URL_RIGHTS", "")
+        self.METABASE_NAVER_CLIP_URL = os.environ.get("METABASE_NAVER_CLIP_URL", "")
 
         self.ADMIN_API_BASE_URL = os.environ.get("ADMIN_API_BASE_URL", "")
         self.ADMIN_API_TOKEN = os.environ.get("ADMIN_API_TOKEN", "")

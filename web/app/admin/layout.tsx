@@ -1,18 +1,9 @@
-import { redirect } from "next/navigation";
-import { getUserRole } from "@/lib/auth";
-import TopHeader from "@/components/top-header";
 import AdminSidebar from "@/components/admin-sidebar";
+import TopHeader from "@/components/top-header";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const role = await getUserRole();
-  if (role !== "admin") redirect("/login");
-
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <TopHeader />
       <div className="flex flex-1 min-h-0">
         <AdminSidebar />

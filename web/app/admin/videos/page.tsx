@@ -1,0 +1,13 @@
+"use client";
+
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
+import { fetchAdminVideos, runLeadDiscovery } from "@/lib/api";
+
+export default function AdminVideosPage() {
+  const router = useRouter();
+  const query = useQuery({ queryKey: ["admin-videos"], queryFn: fetchAdminVideos });
+  const discovery = useMutation({ mutationFn: runLeadDiscovery, onSuccess: (data) => router.push(`/admin/lead-discovery/${data.run_id}`) });
+  return <div className="p-8"><h1 className="text-2xl font-bold text-slate-950">{"\uc601\uc0c1\ubcc4 \ucc44\ub110 \ud604\ud669"}</h1><p className="mt-1 text-sm text-slate-500">{"\uc774\uc6a9 \uc911\uc778 \ucc44\ub110 \uc218\uac00 5\uac1c \uc774\uc0c1\uc778 \uc601\uc0c1\uc740 \ub9ac\ub4dc \ubc1c\uad74\uc744 \uc9c4\ud589\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4."}</p><div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">{query.isLoading && <div className="p-8 text-center text-sm text-slate-500">{"\uc601\uc0c1\uc744 \ubd88\ub7ec\uc624\ub294 \uc911\uc785\ub2c8\ub2e4."}</div>}{query.isError && <div className="p-8 text-center text-sm text-red-600">{(query.error as Error).message}</div>}{query.data && <div className="divide-y divide-slate-100">{query.data.items.map((video) => { const enabled = video.active_channel_count >= 5; return <div key={video.video_id} className="grid grid-cols-[88px_1fr_auto_auto] items-center gap-4 p-5"><img src={video.thumbnail_url} alt="" className="h-14 w-20 rounded-md object-cover" /><div><h2 className="font-semibold text-slate-950">{video.title}</h2><p className="mt-1 text-sm text-slate-500">{"\ub4f1\ub85d\uc77c"} {video.registered_at}</p></div><div className="text-right"><p className="text-xs text-slate-400">{"\uc774\uc6a9\uc911\uc778 \ucc44\ub110 \uc218"}</p><p className="font-semibold text-slate-900">{video.active_channel_count}{"\uac1c"}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"}`}>{"\ub9ac\ub4dc\ubc1c\uad74"}</span><button disabled={!enabled || discovery.isPending} onClick={() => discovery.mutate(video.video_id)} className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400"><Search className="h-4 w-4" />{"\ub9ac\ub4dc \ubc1c\uad74 \uc9c4\ud589"}</button></div></div>; })}</div>}</div>{discovery.isError && <p className="mt-3 text-sm text-red-600">{(discovery.error as Error).message}</p>}</div>;
+}
