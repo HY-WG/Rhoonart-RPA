@@ -25,12 +25,12 @@ class _FakeB2Service:
 
 
 def test_b2_supabase_collect_contract(monkeypatch) -> None:
-    monkeypatch.setattr(rpa_server, "build_b2_supabase_repository", lambda: object())
+    monkeypatch.setattr(rpa_server, "build_naver_supabase_repository", lambda: object())
     monkeypatch.setattr(rpa_server, "B2TestReportService", _FakeB2Service)
 
     client = TestClient(rpa_server.build_app())
     response = client.post(
-        "/api/admin/b2/supabase/collect",
+        "/api/admin/naver/supabase/collect",
         json={"triggered_by": "manual", "max_clips_per_identifier": 10},
     )
 

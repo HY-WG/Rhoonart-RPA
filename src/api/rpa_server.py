@@ -23,7 +23,7 @@ from src.backoffice.app import build_app as build_relief_app
 from src.backoffice.dependencies import get_relief_request_service
 from src.config import settings
 from src.core.repositories.sheet_repository import SheetNaverClipApplicantRepository
-from src.core.repositories.supabase_b2_repository import SupabaseB2Repository
+from src.core.repositories.supabase_b2_repository import SupabaseNaverRepository
 from src.dashboard.app import build_app as build_dashboard_app
 from src.dashboard.runner import build_integration_task_service
 from src.handlers.a2_work_approval import parse_manual_request
@@ -126,13 +126,16 @@ def build_naver_clip_repository() -> SheetNaverClipApplicantRepository:
     return SheetNaverClipApplicantRepository(worksheet)
 
 
-def build_b2_supabase_repository() -> SupabaseB2Repository:
+def build_naver_supabase_repository() -> SupabaseNaverRepository:
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured")
-    return SupabaseB2Repository(
+    return SupabaseNaverRepository(
         supabase_url=settings.SUPABASE_URL,
         service_role_key=settings.SUPABASE_SERVICE_ROLE_KEY,
     )
+
+
+build_b2_supabase_repository = build_naver_supabase_repository
 
 
 def build_b2_analytics_service() -> B2AnalyticsService:
@@ -273,35 +276,40 @@ def build_app() -> FastAPI:
         </html>
         """
 
+    @app.get("/api/admin/naver/content-catalog")
     @app.get("/api/admin/b2/content-catalog")
     def list_b2_content_catalog(_: None = Depends(_check_auth)) -> list[dict[str, Any]]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         return repo.list_content_catalog()
 
+    @app.get("/api/admin/naver/rights-holders")
     @app.get("/api/admin/b2/rights-holders")
     def list_b2_rights_holders(
         enabled_only: bool = True,
         _: None = Depends(_check_auth),
     ) -> list[dict[str, Any]]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         return repo.list_rights_holders(enabled_only=enabled_only)
 
+    @app.get("/api/admin/naver/clip-reports")
     @app.get("/api/admin/b2/clip-reports")
     def list_b2_clip_reports(
         limit: int = 100,
         work_title: str | None = None,
         _: None = Depends(_check_auth),
     ) -> list[dict[str, Any]]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         return repo.list_clip_reports(limit=limit, work_title=work_title)
 
+    @app.get("/api/admin/naver/analytics/options")
     @app.get("/api/admin/b2/analytics/options")
     def get_b2_analytics_options(_: None = Depends(_check_auth)) -> dict[str, Any]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         service = build_b2_analytics_service()
         rows = repo.list_all_clip_reports()
         return service.filter_options(rows)
 
+    @app.get("/api/admin/naver/analytics")
     @app.get("/api/admin/b2/analytics")
     def get_b2_analytics(
         checked_from: str | None = None,
@@ -317,7 +325,7 @@ def build_app() -> FastAPI:
         limit: int = 100,
         _: None = Depends(_check_auth),
     ) -> dict[str, Any]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         service = build_b2_analytics_service()
         filters = B2AnalyticsFilters(
             checked_from=datetime.fromisoformat(checked_from).date() if checked_from else None,
@@ -362,6 +370,7 @@ def build_app() -> FastAPI:
             "rows": filtered,
         }
 
+    @app.post("/api/admin/naver/looker-studio/generate-send")
     @app.post("/api/admin/b2/looker-studio/generate-send")
     def create_b2_looker_delivery_stub(
         request: B2AnalyticsQuery,
@@ -369,7 +378,7 @@ def build_app() -> FastAPI:
     ) -> dict[str, Any]:
         if not request.rights_holder_name:
             raise HTTPException(status_code=400, detail="rights_holder_name is required")
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         service = build_b2_analytics_service()
         filters = B2AnalyticsFilters(
             checked_from=datetime.fromisoformat(request.checked_from).date() if request.checked_from else None,
@@ -414,6 +423,7 @@ def build_app() -> FastAPI:
         log_row = repo.create_looker_delivery_stub(payload)
         return {"stub": payload, "log_row": log_row}
 
+    @app.post("/api/admin/naver/run-report-stub")
     @app.post("/api/admin/b2/run-report-stub")
     def run_b2_report_stub(
         request: B2AdminRunRequest,
@@ -424,12 +434,13 @@ def build_app() -> FastAPI:
             {"source": request.source, "send_notifications": request.send_notifications},
         )
 
+    @app.post("/api/admin/naver/supabase/collect")
     @app.post("/api/admin/b2/supabase/collect")
     def collect_b2_supabase_reports(
         request: B2SupabaseCollectRequest,
         _: None = Depends(_check_auth),
     ) -> dict[str, Any]:
-        repo = build_b2_supabase_repository()
+        repo = build_naver_supabase_repository()
         service = B2TestReportService(
             repository=repo,
             max_clips_per_identifier=request.max_clips_per_identifier,

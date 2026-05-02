@@ -35,5 +35,4 @@ notion-client==2.2.1
 # AI Agent
 anthropic>=0.40.0
 
-# Optional future migration target
-# supabase==2.4.0
+supabase==2.4.0

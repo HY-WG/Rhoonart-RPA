@@ -39,7 +39,7 @@ class A0AdminChannelApprovalPlanner:
             self._notifier.send(
                 self._admin_email,
                 (
-                    f"[A-0] 채널 초대 메일 감지\n"
+                    "[A-0] 채널 초대 메일 감지\n"
                     f"- 제목: {invite.subject}\n"
                     f"- 수신시각: {invite.received_at.isoformat()}\n"
                     f"- 수락 링크: {invite.accept_url}"
@@ -63,9 +63,9 @@ class A0AdminChannelApprovalPlanner:
                 "confirm_channel_access",
             ],
             "requires_human_approval": [
-                "메일 본문 검토",
-                "실제 초대 수락 링크 클릭 직전",
-                "최종 레이블리 승인 직전",
+                "메일 본문 검토 직후",
+                "초대 수락 링크 클릭 직전",
+                "Labelly 최종 승인 직전",
             ],
             "env_keys": ["CONFIG_ADMIN_EMAIL"],
         }
