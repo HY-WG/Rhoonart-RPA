@@ -2,10 +2,10 @@ import type {
   ActionReceipt,
   AdminChannel,
   ApprovalRecord,
-  B2AnalyticsOptions,
-  B2CollectResult,
-  B2ContentCatalogItem,
-  B2RightsHolder,
+  NaverAnalyticsOptions,
+  NaverCollectResult,
+  NaverContentCatalogItem,
+  NaverRightsHolder,
   ChannelVideo,
   ExecutionMode,
   IntegrationRun,
@@ -76,8 +76,13 @@ export const approveRun = (approvalId: string, decidedBy = "admin", note = ""): 
   rpaRequest(`/api/approvals/${approvalId}/approve`, { method: "POST", body: JSON.stringify({ decided_by: decidedBy, note }) });
 export const rejectRun = (approvalId: string, decidedBy = "admin", note = ""): Promise<{ approval_id: string; status: string }> =>
   rpaRequest(`/api/approvals/${approvalId}/reject`, { method: "POST", body: JSON.stringify({ decided_by: decidedBy, note }) });
-export const fetchB2ContentCatalog = (): Promise<B2ContentCatalogItem[]> => rpaRequest("/api/admin/b2/content-catalog");
-export const fetchB2RightsHolders = (): Promise<B2RightsHolder[]> => rpaRequest("/api/admin/b2/rights-holders?enabled_only=false");
-export const fetchB2AnalyticsOptions = (): Promise<B2AnalyticsOptions> => rpaRequest("/api/admin/b2/analytics/options");
-export const collectB2SupabaseReports = (payload: { triggered_by?: string; max_clips_per_identifier: number }): Promise<B2CollectResult> =>
-  rpaRequest("/api/admin/b2/supabase/collect", { method: "POST", body: JSON.stringify(payload) });
+export const fetchNaverContentCatalog = (): Promise<NaverContentCatalogItem[]> => rpaRequest("/api/admin/naver/content-catalog");
+export const fetchNaverRightsHolders = (): Promise<NaverRightsHolder[]> => rpaRequest("/api/admin/naver/rights-holders?enabled_only=false");
+export const fetchNaverAnalyticsOptions = (): Promise<NaverAnalyticsOptions> => rpaRequest("/api/admin/naver/analytics/options");
+export const collectNaverSupabaseReports = (payload: { triggered_by?: string; max_clips_per_identifier: number }): Promise<NaverCollectResult> =>
+  rpaRequest("/api/admin/naver/supabase/collect", { method: "POST", body: JSON.stringify(payload) });
+
+export const fetchB2ContentCatalog = fetchNaverContentCatalog;
+export const fetchB2RightsHolders = fetchNaverRightsHolders;
+export const fetchB2AnalyticsOptions = fetchNaverAnalyticsOptions;
+export const collectB2SupabaseReports = collectNaverSupabaseReports;

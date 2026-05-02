@@ -19,6 +19,7 @@ from src.core.notifiers.email_notifier import EmailNotifier
 from src.core.notifiers.slack_notifier import SlackNotifier
 from src.core.repositories.b2_sheet_performance_repository import B2SheetPerformanceRepository
 from src.core.repositories.sheet_repository import SheetLogRepository
+from src.core.repositories.supabase_b2_repository import SupabaseNaverRepository
 from src.handlers.b2_weekly_report import TASK_ID, TASK_NAME, run as b2_run
 from src.models.log_entry import TriggerType
 
@@ -37,6 +38,7 @@ SLACK_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 SLACK_ERROR_CH = os.environ["SLACK_ERROR_CHANNEL"]
 SENDER_EMAIL = os.environ["SENDER_EMAIL"]
 USE_SES = os.environ.get("USE_SES", "true").lower() == "true"
+NAVER_REPORT_REPOSITORY_TYPE = os.environ.get("NAVER_REPORT_REPOSITORY_TYPE", "supabase")
 
 TAB_CONTENT = os.environ.get("TAB_CONTENT_B2", "A3_작품리스트의 사본")
 TAB_STATS = os.environ.get("TAB_B2_REPORTS", "A3_NAVERCLIP_성과보고")
@@ -45,19 +47,36 @@ TAB_MANAGEMENT = os.environ.get("TAB_CONTENT_MANAGEMENT", "A3_작품 관리의 �
 TAB_LOG = os.environ.get("TAB_LOG", "COMMON_log_records")
 
 
-def _build_deps():
+def _build_sheet_perf_repo() -> B2SheetPerformanceRepository:
     creds = build_google_creds(CREDS_FILE, _SCOPES)
     gc = gspread.authorize(creds)
 
     workbook = gc.open_by_key(CONTENT_SHEET_ID)
-    log_book = gc.open_by_key(LOG_SHEET_ID)
-
-    perf_repo = B2SheetPerformanceRepository(
+    return B2SheetPerformanceRepository(
         content_ws=workbook.worksheet(TAB_CONTENT),
         stats_ws=workbook.worksheet(TAB_STATS),
         rights_ws=workbook.worksheet(TAB_RIGHTS),
         management_ws=workbook.worksheet(TAB_MANAGEMENT),
     )
+
+
+def _build_supabase_perf_repo() -> SupabaseNaverRepository:
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not service_role_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for Naver reports")
+    return SupabaseNaverRepository(
+        supabase_url=supabase_url,
+        service_role_key=service_role_key,
+    )
+
+
+def _build_deps():
+    creds = build_google_creds(CREDS_FILE, _SCOPES)
+    gc = gspread.authorize(creds)
+
+    log_book = gc.open_by_key(LOG_SHEET_ID)
+    perf_repo = _build_sheet_perf_repo() if NAVER_REPORT_REPOSITORY_TYPE == "sheets" else _build_supabase_perf_repo()
     log_repo = SheetLogRepository(log_book.worksheet(TAB_LOG))
 
     email_notifier = EmailNotifier(sender_email=SENDER_EMAIL, use_ses=USE_SES)

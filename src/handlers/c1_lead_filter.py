@@ -104,6 +104,7 @@ def run_for_work(
     lead_sheet_url: str = "",
     seed_sheet_gid: str = "1224056617",
     max_channels: int = 200,
+    seed_urls: list[str] | None = None,
 ) -> dict:
     """work_threshold 트리거 — 특정 작품의 채널 부족 시 리드 발굴 실행.
 
@@ -125,6 +126,7 @@ def run_for_work(
         seed_sheet_id=seed_sheet_id,
         seed_sheet_gid=seed_sheet_gid,
         max_channels=max_channels,
+        seed_urls=seed_urls,
     )
 
     # 발굴된 채널 목록은 lead_repo.upsert 전에 저장해 두기 어려우므로
@@ -168,6 +170,7 @@ def run(
     seed_sheet_id: str,
     seed_sheet_gid: str = "1224056617",
     max_channels: int = 200,
+    seed_urls: list[str] | None = None,
 ) -> dict:
     """C-1 리드 발굴 실행.
 
@@ -190,8 +193,11 @@ def run(
             "upserted": int,        # 리드 시트에 추가/갱신된 수
         }
     """
-    log.info("[C-1] 시드 채널 목록 로드 중 (sheet=%s, gid=%s)", seed_sheet_id, seed_sheet_gid)
-    seed_urls = load_seed_urls_from_sheet(seed_sheet_id, seed_sheet_gid)
+    if seed_urls is None:
+        log.info("[C-1] 시드 채널 목록 로드 중 (sheet=%s, gid=%s)", seed_sheet_id, seed_sheet_gid)
+        seed_urls = load_seed_urls_from_sheet(seed_sheet_id, seed_sheet_gid)
+    else:
+        log.info("[C-1] Supabase seed_channel에서 받은 시드 채널 목록 사용")
     log.info("[C-1] 시드 채널 %d개 로드 완료", len(seed_urls))
 
     crawler = YouTubeShortsCrawler(

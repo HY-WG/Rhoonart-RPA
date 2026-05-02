@@ -8,7 +8,7 @@ import { BarChart3, ChevronDown, ChevronRight, Film, PanelsTopLeft } from "lucid
 const sections = [
   { id: "channels", label: "\ucc44\ub110 \uad00\ub9ac", icon: PanelsTopLeft, items: [{ href: "/admin/channels", label: "\ucc44\ub110\uc870\ud68c" }] },
   { id: "videos", label: "\uc601\uc0c1\uad00\ub9ac", icon: Film, items: [{ href: "/admin/new-work", label: "\uc2e0\uaddc \uc601\uc0c1 \ub4f1\ub85d" }, { href: "/admin/videos", label: "\uc601\uc0c1\ubcc4 \ucc44\ub110 \ud604\ud669" }] },
-  { id: "reports", label: "\uc131\uacfc\ubcf4\uace0", icon: BarChart3, items: [{ href: "/admin/reports/kakao", label: "\uce74\uce74\uc624 \uc6d4\ucd08 \uc810\uac80" }, { href: "/admin/reports/naver", label: "\ub124\uc774\ubc84 \uc6d4\ubcc4 \uc131\uacfc\ubcf4\uace0" }, { href: "/admin/reports/naver-clip", label: "\ub124\uc774\ubc84 \ud074\ub9bd \uc131\uacfc \ud655\uc778" }, { href: "/admin/reports/b2", label: "B2 Supabase \uc5c5\ub370\uc774\ud2b8" }] },
+  { id: "reports", label: "\uc131\uacfc\ubcf4\uace0", icon: BarChart3, items: [{ href: "/admin/reports/kakao", label: "\uce74\uce74\uc624 \uc6d4\ucd08 \uc810\uac80" }, { href: "/admin/reports/naver", label: "\ub124\uc774\ubc84 \uc6d4\ubcc4 \uc131\uacfc\ubcf4\uace0" }, { href: "/admin/reports/naver-clip", label: "\ub124\uc774\ubc84 \ud074\ub9bd \uc131\uacfc \ud655\uc778" }, { href: "/admin/reports/naver-supabase", label: "Naver Supabase \uc5c5\ub370\uc774\ud2b8" }] },
 ];
 
 export default function AdminSidebar() {

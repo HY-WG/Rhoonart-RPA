@@ -104,16 +104,17 @@ export interface MetabaseReport {
   reports: MetabaseRightsHolderReport[];
 }
 
-export interface B2ContentCatalogItem {
+export interface NaverContentCatalogItem {
   id?: number;
   content_name: string;
   identifier: string;
   rights_holder_name: string;
   active_flag?: string;
+  status?: string;
   naver_report_enabled?: boolean;
 }
 
-export interface B2RightsHolder {
+export interface NaverRightsHolder {
   id?: number;
   rights_holder_name: string;
   email?: string | null;
@@ -124,7 +125,7 @@ export interface B2RightsHolder {
   looker_studio_url?: string | null;
 }
 
-export interface B2AnalyticsSummary {
+export interface NaverAnalyticsSummary {
   clip_count: number;
   channel_count: number;
   work_count: number;
@@ -133,7 +134,7 @@ export interface B2AnalyticsSummary {
   max_views: number;
 }
 
-export interface B2AnalyticsOptions {
+export interface NaverAnalyticsOptions {
   channel_names: string[];
   work_titles: string[];
   rights_holder_names: string[];
@@ -144,13 +145,19 @@ export interface B2AnalyticsOptions {
   uploaded_date_max: string | null;
 }
 
-export interface B2CollectResult {
+export interface NaverCollectResult {
   status: string;
   triggered_by: string;
   max_clips_per_identifier: number;
   row_count: number;
-  summary: B2AnalyticsSummary;
+  summary: NaverAnalyticsSummary;
 }
+
+export type B2ContentCatalogItem = NaverContentCatalogItem;
+export type B2RightsHolder = NaverRightsHolder;
+export type B2AnalyticsSummary = NaverAnalyticsSummary;
+export type B2AnalyticsOptions = NaverAnalyticsOptions;
+export type B2CollectResult = NaverCollectResult;
 
 export interface ActionReceipt {
   request_id: string;

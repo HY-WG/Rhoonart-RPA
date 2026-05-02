@@ -7,8 +7,19 @@ from urllib.parse import quote
 import requests
 from requests import HTTPError
 
+from ...models.performance import ChannelStat, ClipReport, RightsHolder
 
-class SupabaseB2Repository:
+
+class SupabaseNaverRepository:
+    CONTENT_TABLE = "naver_works"
+    RIGHTS_HOLDERS_TABLE = "naver_rights_holders"
+    CLIP_REPORTS_TABLE = "naver_clip_report_legacy_rows"
+    CLIP_REPORT_STAGING_TABLE = "naver_clip_report_staging"
+    CLIP_REPORT_RUNS_TABLE = "naver_clip_report_runs"
+    CLIP_REPORT_DAILY_TABLE = "naver_clip_report_daily_rows"
+    REPORT_DELIVERY_LOGS_TABLE = "naver_report_delivery_logs"
+    REFRESH_YEAR_RPC = "refresh_naver_clip_report_year"
+
     def __init__(
         self,
         *,
@@ -26,9 +37,9 @@ class SupabaseB2Repository:
         self._timeout = timeout
 
     def list_content_catalog(self, limit: int = 200) -> list[dict[str, Any]]:
-        return self._get(
-            f"/b2_content_catalog?select=*&order=content_name.asc&limit={limit}"
-        )
+        return [self._normalize_work_row(row) for row in self._get(
+            f"/{self.CONTENT_TABLE}?select=*&order=work_title.asc&limit={limit}"
+        )]
 
     def upsert_content_catalog_item(
         self,
@@ -39,21 +50,21 @@ class SupabaseB2Repository:
         **extra: Any,
     ) -> dict[str, Any]:
         existing = self._get(
-            f"/b2_content_catalog?select=*&content_name=eq.{quote(content_name)}&limit=1"
+            f"/{self.CONTENT_TABLE}?select=*&work_title=eq.{quote(content_name)}&limit=1"
         )
         payload = {
-            "content_name": content_name,
+            "work_title": content_name,
             "identifier": identifier,
             "rights_holder_name": rights_holder_name,
-            "active_flag": extra.pop("active_flag", "Active"),
+            "status": extra.pop("active_flag", extra.pop("status", "Active")),
             **{key: value for key, value in extra.items() if value is not None},
         }
         if existing:
-            return self._patch(
-                f"/b2_content_catalog?id=eq.{existing[0]['id']}",
+            return self._normalize_work_row(self._patch(
+                f"/{self.CONTENT_TABLE}?id=eq.{existing[0]['id']}",
                 payload,
-            )
-        return self._post("/b2_content_catalog", payload)
+            ))
+        return self._normalize_work_row(self._post(f"/{self.CONTENT_TABLE}", payload))
 
     def list_rights_holders(
         self,
@@ -61,9 +72,9 @@ class SupabaseB2Repository:
         enabled_only: bool = False,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        suffix = f"/b2_rights_holders?select=*&order=rights_holder_name.asc&limit={limit}"
+        suffix = f"/{self.RIGHTS_HOLDERS_TABLE}?select=*&order=rights_holder_name.asc&limit={limit}"
         if enabled_only:
-            suffix = f"/b2_rights_holders?select=*&naver_report_enabled=eq.true&order=rights_holder_name.asc&limit={limit}"
+            suffix = f"/{self.RIGHTS_HOLDERS_TABLE}?select=*&naver_report_enabled=eq.true&order=rights_holder_name.asc&limit={limit}"
         return self._get(suffix)
 
     def upsert_rights_holder(
@@ -76,7 +87,7 @@ class SupabaseB2Repository:
         **extra: Any,
     ) -> dict[str, Any]:
         existing = self._get(
-            f"/b2_rights_holders?select=*&rights_holder_name=eq.{quote(rights_holder_name)}&limit=1"
+            f"/{self.RIGHTS_HOLDERS_TABLE}?select=*&rights_holder_name=eq.{quote(rights_holder_name)}&limit=1"
         )
         payload = {
             "rights_holder_name": rights_holder_name,
@@ -87,18 +98,18 @@ class SupabaseB2Repository:
         }
         if existing:
             return self._patch(
-                f"/b2_rights_holders?id=eq.{existing[0]['id']}",
+                f"/{self.RIGHTS_HOLDERS_TABLE}?id=eq.{existing[0]['id']}",
                 payload,
             )
-        return self._post("/b2_rights_holders", payload)
+        return self._post(f"/{self.RIGHTS_HOLDERS_TABLE}", payload)
 
     def list_enabled_content_catalog(self, limit: int = 1000) -> list[dict[str, Any]]:
         try:
-            return self._get(
-                "/b2_content_catalog"
+            return [self._normalize_work_row(row) for row in self._get(
+                f"/{self.CONTENT_TABLE}"
                 "?select=*&naver_report_enabled=eq.true"
-                f"&order=content_name.asc&limit={limit}"
-            )
+                f"&order=work_title.asc&limit={limit}"
+            )]
         except HTTPError as exc:
             if exc.response is None or exc.response.status_code != 400:
                 raise
@@ -133,9 +144,55 @@ class SupabaseB2Repository:
         if not payload:
             return {}
         return self._patch(
-            f"/b2_rights_holders?rights_holder_name=eq.{quote(rights_holder_name)}",
+            f"/{self.RIGHTS_HOLDERS_TABLE}?rights_holder_name=eq.{quote(rights_holder_name)}",
             payload,
         )
+
+    def get_content_list(self) -> list[tuple[str, str]]:
+        return [
+            (str(row.get("identifier") or ""), str(row.get("content_name") or ""))
+            for row in self.list_enabled_content_catalog()
+            if row.get("identifier") and row.get("content_name")
+        ]
+
+    def upsert_channel_stats(self, stats: list[ChannelStat]) -> int:
+        return len(stats)
+
+    def replace_clip_reports(self, reports: list[ClipReport]) -> int:
+        rows = [
+            {
+                "video_url": report.video_url,
+                "uploaded_at": report.uploaded_at.isoformat() if report.uploaded_at else None,
+                "channel_name": report.channel_name,
+                "view_count": report.view_count,
+                "checked_at": report.checked_at.isoformat(),
+                "clip_title": report.clip_title,
+                "work_title": report.work_title,
+                "platform": report.platform,
+                "rights_holder_name": report.rights_holder_name,
+                "identifier": report.identifier,
+            }
+            for report in reports
+        ]
+        self._delete(f"/{self.CLIP_REPORTS_TABLE}?id=gt.0")
+        for start in range(0, len(rows), 500):
+            chunk = rows[start : start + 500]
+            if chunk:
+                self._post(f"/{self.CLIP_REPORTS_TABLE}", chunk)
+        return len(rows)
+
+    def get_rights_holders(self) -> list[RightsHolder]:
+        return [
+            RightsHolder(
+                holder_id=str(row.get("id") or row.get("rights_holder_name") or ""),
+                name=str(row.get("rights_holder_name") or ""),
+                email=row.get("email"),
+                dashboard_url=row.get("looker_studio_url"),
+                channel_ids=[],
+            )
+            for row in self.list_rights_holders(enabled_only=True, limit=1000)
+            if row.get("rights_holder_name")
+        ]
 
     def list_clip_reports(
         self,
@@ -143,12 +200,12 @@ class SupabaseB2Repository:
         limit: int = 100,
         work_title: str | None = None,
     ) -> list[dict[str, Any]]:
-        suffix = f"/b2_clip_reports?select=*&order=checked_at.desc,view_count.desc&limit={limit}"
+        suffix = f"/{self.CLIP_REPORTS_TABLE}?select=*&order=checked_at.desc,view_count.desc&limit={limit}"
         if work_title:
             from urllib.parse import quote
 
             suffix = (
-                "/b2_clip_reports"
+                f"/{self.CLIP_REPORTS_TABLE}"
                 f"?select=*&work_title=eq.{quote(work_title)}"
                 "&order=checked_at.desc,view_count.desc"
                 f"&limit={limit}"
@@ -190,29 +247,29 @@ class SupabaseB2Repository:
             params.append(f"platform=eq.{quote(platform)}")
         if clip_title:
             params.append(f"clip_title=ilike.*{quote(clip_title)}*")
-        return self._get(f"/b2_clip_reports?{'&'.join(params)}")
+        return self._get(f"/{self.CLIP_REPORTS_TABLE}?{'&'.join(params)}")
 
     def list_all_clip_reports(self, limit: int = 5000) -> list[dict[str, Any]]:
         return self._get(
-            f"/b2_clip_reports?select=*&order=checked_at.desc,view_count.desc&limit={limit}"
+            f"/{self.CLIP_REPORTS_TABLE}?select=*&order=checked_at.desc,view_count.desc&limit={limit}"
         )
 
     def replace_test_clip_reports(self, rows: list[dict[str, Any]]) -> int:
-        self._delete("/b2_clip_reports_test?id=gt.0")
+        self._delete(f"/{self.CLIP_REPORT_STAGING_TABLE}?id=gt.0")
         for start in range(0, len(rows), 500):
             chunk = rows[start : start + 500]
             if chunk:
-                self._post("/b2_clip_reports_test", chunk)
+                self._post(f"/{self.CLIP_REPORT_STAGING_TABLE}", chunk)
         return len(rows)
 
     def ensure_daily_clip_reports_table(self) -> None:
         try:
-            self._get("/b2_clip_reports_daily?select=id&limit=1")
+            self._get(f"/{self.CLIP_REPORT_DAILY_TABLE}?select=id&limit=1")
         except HTTPError as exc:
             if exc.response is not None and exc.response.status_code == 404:
                 raise RuntimeError(
-                    "b2_clip_reports_daily table is missing. "
-                    "Apply migrations/003_b2_clip_reports_daily_history.sql before collecting reports."
+                    "naver_clip_report_daily_rows table is missing. "
+                    "Apply the Naver report table migration before collecting reports."
                 ) from exc
             raise
 
@@ -224,7 +281,7 @@ class SupabaseB2Repository:
         target_identifier_count: int,
     ) -> dict[str, Any]:
         return self._post(
-            "/b2_clip_report_runs",
+            f"/{self.CLIP_REPORT_RUNS_TABLE}",
             {
                 "checked_at": checked_at,
                 "triggered_by": triggered_by,
@@ -242,7 +299,7 @@ class SupabaseB2Repository:
         error_message: str | None = None,
     ) -> dict[str, Any]:
         return self._patch(
-            f"/b2_clip_report_runs?run_id=eq.{run_id}",
+            f"/{self.CLIP_REPORT_RUNS_TABLE}?run_id=eq.{run_id}",
             {
                 "status": status,
                 "row_count": row_count,
@@ -261,12 +318,12 @@ class SupabaseB2Repository:
         for start in range(0, len(prepared), 500):
             chunk = prepared[start : start + 500]
             if chunk:
-                self._post("/b2_clip_reports_daily", chunk)
+                self._post(f"/{self.CLIP_REPORT_DAILY_TABLE}", chunk)
         return len(prepared)
 
     def refresh_yearly_clip_reports(self, year: int) -> None:
         response = requests.post(
-            f"{self._base}/rpc/refresh_b2_clip_reports_year",
+            f"{self._base}/rpc/{self.REFRESH_YEAR_RPC}",
             headers=self._headers,
             json={"target_year": year},
             timeout=self._timeout,
@@ -275,7 +332,7 @@ class SupabaseB2Repository:
 
     def create_looker_delivery_stub(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = requests.post(
-            f"{self._base}/b2_run_logs",
+            f"{self._base}/{self.REPORT_DELIVERY_LOGS_TABLE}",
             headers={**self._headers, "Prefer": "return=representation"},
             json={
                 "run_id": payload.get("run_id"),
@@ -328,3 +385,14 @@ class SupabaseB2Repository:
             timeout=self._timeout,
         )
         response.raise_for_status()
+
+    @staticmethod
+    def _normalize_work_row(row: dict[str, Any]) -> dict[str, Any]:
+        if "content_name" not in row and "work_title" in row:
+            row = {**row, "content_name": row.get("work_title")}
+        if "active_flag" not in row and "status" in row:
+            row = {**row, "active_flag": row.get("status")}
+        return row
+
+
+SupabaseB2Repository = SupabaseNaverRepository

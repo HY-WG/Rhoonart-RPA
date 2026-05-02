@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.config import settings
-from src.core.repositories.supabase_b2_repository import SupabaseB2Repository
+from src.core.repositories.supabase_b2_repository import SupabaseNaverRepository
 from src.services import B2AnalyticsFilters, B2AnalyticsService
 
 from .models import ExecutionMode, IntegrationRun, IntegrationTaskSpec
@@ -182,13 +182,16 @@ def _render_dashboard_shell() -> str:
 """
 
 
-def _build_b2_repository() -> SupabaseB2Repository:
+def _build_naver_repository() -> SupabaseNaverRepository:
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured")
-    return SupabaseB2Repository(
+    return SupabaseNaverRepository(
         supabase_url=settings.SUPABASE_URL,
         service_role_key=settings.SUPABASE_SERVICE_ROLE_KEY,
     )
+
+
+_build_b2_repository = _build_naver_repository
 
 
 def _build_b2_service() -> B2AnalyticsService:
@@ -340,16 +343,18 @@ def build_app(service: IntegrationTaskService | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/api/naver/analytics/options")
     @app.get("/api/b2/analytics/options")
     def get_b2_options() -> dict[str, Any]:
-        repo = _build_b2_repository()
+        repo = _build_naver_repository()
         service = _build_b2_service()
         rows = repo.list_all_clip_reports()
         return service.filter_options(rows)
 
+    @app.get("/api/naver/analytics")
     @app.get("/api/b2/analytics")
     def get_b2_analytics(checked_from: str | None = None, checked_to: str | None = None, uploaded_from: str | None = None, uploaded_to: str | None = None, channel_name: str | None = None, clip_title: str | None = None, work_title: str | None = None, rights_holder_name: str | None = None, platform: str | None = None, group_by: str = "clip", limit: int = 100) -> dict[str, Any]:
-        repo = _build_b2_repository()
+        repo = _build_naver_repository()
         service = _build_b2_service()
         filters = B2AnalyticsFilters(
             checked_from=date.fromisoformat(checked_from) if checked_from else None,
@@ -366,11 +371,12 @@ def build_app(service: IntegrationTaskService | None = None) -> FastAPI:
         filtered = service.filter_rows(rows, filters)
         return {"filters": {"checked_from": checked_from, "checked_to": checked_to, "uploaded_from": uploaded_from, "uploaded_to": uploaded_to, "channel_name": channel_name, "clip_title": clip_title, "work_title": work_title, "rights_holder_name": rights_holder_name, "platform": platform, "group_by": group_by, "limit": min(limit, 1000)}, "summary": service.summarize(filtered), "groups": service.group_rows(filtered, group_by=group_by), "rows": filtered}
 
+    @app.post("/api/naver/looker-studio/generate-send")
     @app.post("/api/b2/looker-studio/generate-send")
     def generate_b2_looker(request: B2AnalyticsRequest) -> dict[str, Any]:
         if not request.rights_holder_name:
             raise HTTPException(status_code=400, detail="rights_holder_name is required")
-        repo = _build_b2_repository()
+        repo = _build_naver_repository()
         service = _build_b2_service()
         filters = B2AnalyticsFilters(
             checked_from=date.fromisoformat(request.checked_from) if request.checked_from else None,

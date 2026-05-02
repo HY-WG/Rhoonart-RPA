@@ -38,6 +38,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.error_handler import task_handler
 from src.core.notifiers.slack_notifier import SlackNotifier
 from src.core.repositories.sheet_repository import SheetLeadRepository, SheetLogRepository
+from src.core.repositories.supabase_repository import (
+    SupabaseLeadRepository,
+    SupabaseLogRepository,
+    SupabaseSeedChannelRepository,
+)
 from src.core.logger import CoreLogger
 from src.handlers.c1_lead_filter import run as c1_run, run_for_work as c1_run_for_work, TASK_ID, TASK_NAME
 from src.models.log_entry import TriggerType
@@ -51,9 +56,10 @@ _SCOPES = [
 
 # ── 환경 변수 ──────────────────────────────────────────────────────────────────
 YOUTUBE_API_KEY       = os.environ["YOUTUBE_API_KEY"]
-SEED_SHEET_ID         = os.environ["SEED_CHANNEL_SHEET_ID"]
+C_LEAD_REPOSITORY_TYPE = os.environ.get("C_LEAD_REPOSITORY_TYPE", "supabase").lower()
+SEED_SHEET_ID         = os.environ.get("SEED_CHANNEL_SHEET_ID", "")
 SEED_SHEET_GID        = os.environ.get("SEED_CHANNEL_GID", "1224056617")
-LEAD_SHEET_ID         = os.environ["LEAD_SHEET_ID"]
+LEAD_SHEET_ID         = os.environ.get("LEAD_SHEET_ID", "")
 LOG_SHEET_ID          = os.environ.get("LOG_SHEET_ID", LEAD_SHEET_ID)
 CREDS_FILE            = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json")
 SLACK_TOKEN           = os.environ["SLACK_BOT_TOKEN"]
@@ -66,6 +72,18 @@ TAB_LOG   = os.environ.get("TAB_LOG", "로그")
 
 
 def _build_deps():
+    if C_LEAD_REPOSITORY_TYPE == "supabase":
+        from supabase import create_client  # type: ignore
+
+        supabase_url = os.environ["SUPABASE_URL"]
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
+        client = create_client(supabase_url, supabase_key)
+        lead_repo = SupabaseLeadRepository(client)
+        log_repo = SupabaseLogRepository(client)
+        seed_repo = SupabaseSeedChannelRepository(client)
+        slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CH)
+        return lead_repo, log_repo, slack_notifier, seed_repo
+
     creds = build_google_creds(CREDS_FILE, _SCOPES)
     gc = gspread.authorize(creds)
 
@@ -76,7 +94,7 @@ def _build_deps():
     log_repo  = SheetLogRepository(log_sh.worksheet(TAB_LOG))
     slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CH)
 
-    return lead_repo, log_repo, slack_notifier
+    return lead_repo, log_repo, slack_notifier, None
 
 
 def handler(event: dict, context) -> dict:
@@ -88,8 +106,9 @@ def handler(event: dict, context) -> dict:
         선택 필드: event["lead_sheet_url"] (str, Slack 링크용)
       - 그 외 (기본, cron): 월간 전체 탐색
     """
-    lead_repo, log_repo, slack_notifier = _build_deps()
+    lead_repo, log_repo, slack_notifier, seed_repo = _build_deps()
     source = event.get("source", "cron")
+    seed_urls = seed_repo.list_seed_channel_urls() if seed_repo else None
 
     if source == "work_threshold":
         work_title = event.get("work_title", "알 수 없는 작품")
@@ -114,6 +133,7 @@ def handler(event: dict, context) -> dict:
                 lead_sheet_url=lead_sheet_url,
                 seed_sheet_gid=SEED_SHEET_GID,
                 max_channels=MAX_CHANNELS,
+                seed_urls=seed_urls,
             )
 
         return _run_threshold(event, context)
@@ -136,6 +156,7 @@ def handler(event: dict, context) -> dict:
             seed_sheet_id=SEED_SHEET_ID,
             seed_sheet_gid=SEED_SHEET_GID,
             max_channels=MAX_CHANNELS,
+            seed_urls=seed_urls,
         )
 
     return _run(event, context)
