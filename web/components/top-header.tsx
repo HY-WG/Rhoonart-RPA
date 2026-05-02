@@ -2,45 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard } from "lucide-react";
+
+const tabs = [
+  { href: "/portal", label: "\ub0b4 \ucc44\ub110" },
+  { href: "/admin", label: "\uc5b4\ub4dc\ubbfc" },
+];
 
 export default function TopHeader() {
   const pathname = usePathname();
-
-  const tabs = [
-    { href: "/", label: "홈" },
-    { href: "/portal", label: "내채널" },
-    { href: "/admin", label: "어드민" },
-  ];
-
-  const activeTab = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  };
-
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
+    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-10">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-            ㄹ
-          </div>
-          <span className="font-semibold text-gray-900 text-base">레이블리</span>
+        <Link href="/portal" className="flex items-center gap-2.5">
+          <span className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white"><LayoutDashboard className="w-4 h-4" /></span>
+          <span className="font-semibold text-slate-950 text-base">Rhoonart RPA</span>
         </Link>
-
-        <nav className="flex items-center gap-8">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`text-sm pb-0.5 transition-colors ${
-                activeTab(tab.href)
-                  ? "text-teal-600 font-medium border-b-2 border-teal-500"
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {tab.label}
-            </Link>
-          ))}
+        <nav className="flex items-center gap-7">
+          {tabs.map((tab) => {
+            const active = pathname.startsWith(tab.href);
+            return <Link key={tab.href} href={tab.href} className={`text-sm pb-0.5 transition-colors ${active ? "text-blue-700 font-semibold border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}>{tab.label}</Link>;
+          })}
         </nav>
       </div>
     </header>

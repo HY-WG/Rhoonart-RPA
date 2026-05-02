@@ -1,71 +1,11 @@
 const applications = [
-  {
-    id: 1,
-    workTitle: "여름밤의 세레나데",
-    channelName: "H Y",
-    status: "승인",
-    applicationDate: "2026-04-28",
-    processDate: "2026-04-29",
-  },
-  {
-    id: 2,
-    workTitle: "힙합 컴필레이션 Vol.2",
-    channelName: "뮤직채널",
-    status: "대기중",
-    applicationDate: "2026-04-27",
-    processDate: "-",
-  },
-  {
-    id: 3,
-    workTitle: "어쿠스틱 라이브",
-    channelName: "엔터테인먼트",
-    status: "거부",
-    applicationDate: "2026-04-25",
-    processDate: "2026-04-26",
-  },
+  { id: 1, workTitle: "\uc0ac\ub791\uc758 \ubd88\uc2dc\ucc29 \ud558\uc774\ub77c\uc774\ud2b8", channelName: "H Y", status: "\uc2b9\uc778", applicationDate: "2026-04-28", processDate: "2026-04-29" },
+  { id: 2, workTitle: "\ud0b9\ub354\ub79c\ub4dc \uba85\uc7a5\uba74 \ubaa8\uc74c", channelName: "\ubba4\uc9c1\ucc44\ub110", status: "\ub300\uae30\uc911", applicationDate: "2026-04-27", processDate: "-" },
+  { id: 3, workTitle: "\ubb34\ube59 \uce90\ub9ad\ud130 \ub9ac\ubdf0", channelName: "\uc5d4\ud130\ud14c\uc778\uba3c\ud2b8", status: "\uac70\ubd80", applicationDate: "2026-04-25", processDate: "2026-04-26" },
 ];
 
-const statusStyle = (s: string) => {
-  if (s === "승인") return "bg-teal-50 text-teal-600";
-  if (s === "대기중") return "bg-yellow-50 text-yellow-600";
-  return "bg-red-50 text-red-500";
-};
+const statusStyle = (s: string) => s === "\uc2b9\uc778" ? "bg-green-50 text-green-600" : s === "\ub300\uae30\uc911" ? "bg-yellow-50 text-yellow-600" : "bg-red-50 text-red-500";
 
 export default function WorkApplicationPage() {
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">작품 사용 신청 진행상황</h1>
-
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">작품명</th>
-              <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">채널명</th>
-              <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">상태</th>
-              <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">신청일</th>
-              <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">처리일</th>
-            </tr>
-          </thead>
-          <tbody>
-            {applications.map((app) => (
-              <tr key={app.id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm text-teal-600 font-medium hover:underline cursor-pointer">
-                  {app.workTitle}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{app.channelName}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-3 py-1 text-sm rounded-full font-medium ${statusStyle(app.status)}`}>
-                    {app.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{app.applicationDate}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{app.processDate}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <div className="p-8"><h1 className="text-2xl font-bold text-gray-900 mb-6">{"\uc791\ud488 \uc0ac\uc6a9 \uc2e0\uccad \uc9c4\ud589\ud604\ud669"}</h1><div className="bg-white rounded-xl border border-gray-200 overflow-hidden"><table className="w-full"><thead><tr className="border-b border-gray-100"><th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">{"\uc791\ud488\uba85"}</th><th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">{"\ucc44\ub110\uba85"}</th><th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">{"\uc0c1\ud0dc"}</th><th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">{"\uc2e0\uccad\uc77c"}</th><th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">{"\ucc98\ub9ac\uc77c"}</th></tr></thead><tbody>{applications.map((app) => <tr key={app.id} className="border-b border-gray-50 hover:bg-gray-50"><td className="px-6 py-4 text-sm text-blue-600 font-medium">{app.workTitle}</td><td className="px-6 py-4 text-sm text-gray-600">{app.channelName}</td><td className="px-6 py-4"><span className={`px-3 py-1 text-sm rounded-full font-medium ${statusStyle(app.status)}`}>{app.status}</span></td><td className="px-6 py-4 text-sm text-gray-600">{app.applicationDate}</td><td className="px-6 py-4 text-sm text-gray-600">{app.processDate}</td></tr>)}</tbody></table></div></div>;
 }

@@ -29,6 +29,7 @@ from src.dashboard.runner import build_integration_task_service
 from src.handlers.a2_work_approval import parse_manual_request
 from src.models import NaverClipApplicant, RepresentativeChannelPlatform
 from src.services import B2AnalyticsFilters, B2AnalyticsService
+from src.services.b2_test_report_service import B2TestReportService
 
 KST = pytz.timezone("Asia/Seoul")
 ADMIN_B2_STATIC_DIR = Path(__file__).resolve().parents[1] / "admin_b2" / "static"
@@ -70,6 +71,11 @@ class A2ManualRequestStub(BaseModel):
 class B2AdminRunRequest(BaseModel):
     send_notifications: bool = False
     source: str = "admin_page"
+
+
+class B2SupabaseCollectRequest(BaseModel):
+    triggered_by: str = Field(default="manual", pattern="^(manual|schedule|api)$")
+    max_clips_per_identifier: int = Field(default=2000, ge=1, le=5000)
 
 
 class B2AnalyticsQuery(BaseModel):
@@ -417,6 +423,26 @@ def build_app() -> FastAPI:
             "lambda.b2_weekly_report_handler",
             {"source": request.source, "send_notifications": request.send_notifications},
         )
+
+    @app.post("/api/admin/b2/supabase/collect")
+    def collect_b2_supabase_reports(
+        request: B2SupabaseCollectRequest,
+        _: None = Depends(_check_auth),
+    ) -> dict[str, Any]:
+        repo = build_b2_supabase_repository()
+        service = B2TestReportService(
+            repository=repo,
+            max_clips_per_identifier=request.max_clips_per_identifier,
+        )
+        rows = service.collect_enabled_reports(triggered_by=request.triggered_by)
+        summary = build_b2_analytics_service().summarize(rows)
+        return {
+            "status": "success",
+            "triggered_by": request.triggered_by,
+            "max_clips_per_identifier": request.max_clips_per_identifier,
+            "row_count": len(rows),
+            "summary": summary,
+        }
 
     @app.get("/a3/apply", response_class=HTMLResponse)
     def a3_apply_page() -> str:

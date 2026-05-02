@@ -3,86 +3,30 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronRight, Film, PanelsTopLeft } from "lucide-react";
 
-const SECTIONS = [
-  {
-    id: "channel",
-    label: "1. 채널 관리",
-    items: [
-      { href: "/admin/channels", label: "채널 관리" },
-      { href: "/admin/lead-discovery", label: "리드 채널 발굴" },
-      { href: "/admin/lead-email", label: "리드 채널 메일 발송" },
-    ],
-  },
-  {
-    id: "work",
-    label: "2. 작품 관리",
-    items: [
-      { href: "/admin/new-work", label: "신규작품 등록" },
-      { href: "/admin/naver-work", label: "네이버 작품 정보 추가" },
-      { href: "/admin/work-application", label: "작품 사용 신청 진행상황" },
-    ],
-  },
-  {
-    id: "report",
-    label: "3. 월별 보고",
-    items: [
-      { href: "/admin/naver-report", label: "네이버 월별 성과보고" },
-    ],
-  },
+const sections = [
+  { id: "channels", label: "\ucc44\ub110 \uad00\ub9ac", icon: PanelsTopLeft, items: [{ href: "/admin/channels", label: "\ucc44\ub110\uc870\ud68c" }] },
+  { id: "videos", label: "\uc601\uc0c1\uad00\ub9ac", icon: Film, items: [{ href: "/admin/new-work", label: "\uc2e0\uaddc \uc601\uc0c1 \ub4f1\ub85d" }, { href: "/admin/videos", label: "\uc601\uc0c1\ubcc4 \ucc44\ub110 \ud604\ud669" }] },
+  { id: "reports", label: "\uc131\uacfc\ubcf4\uace0", icon: BarChart3, items: [{ href: "/admin/reports/kakao", label: "\uce74\uce74\uc624 \uc6d4\ucd08 \uc810\uac80" }, { href: "/admin/reports/naver", label: "\ub124\uc774\ubc84 \uc6d4\ubcc4 \uc131\uacfc\ubcf4\uace0" }, { href: "/admin/reports/naver-clip", label: "\ub124\uc774\ubc84 \ud074\ub9bd \uc131\uacfc \ud655\uc778" }, { href: "/admin/reports/b2", label: "B2 Supabase \uc5c5\ub370\uc774\ud2b8" }] },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    channel: true,
-    work: true,
-    report: true,
-  });
-
-  const toggle = (id: string) =>
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ channels: true, videos: true, reports: true });
   return (
-    <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col min-h-full">
-      <nav className="flex-1 py-3">
-        {SECTIONS.map((section) => {
-          const isOpen = expanded[section.id];
+    <aside className="w-64 shrink-0 bg-white border-r border-slate-200 min-h-full">
+      <nav className="py-4">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          const open = expanded[section.id];
           return (
-            <div key={section.id} className="mb-1">
-              <button
-                onClick={() => toggle(section.id)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors"
-              >
-                <span>{section.label}</span>
-                {isOpen ? (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                )}
+            <div key={section.id} className="mb-2">
+              <button onClick={() => setExpanded((prev) => ({ ...prev, [section.id]: !prev[section.id] }))} className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                <span className="flex items-center gap-2"><Icon className="w-4 h-4" />{section.label}</span>
+                {open ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
               </button>
-
-              {isOpen && (
-                <div className="mb-1">
-                  {section.items.map((item) => {
-                    const active = pathname === item.href;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`block px-6 py-2 text-sm transition-colors ${
-                          active
-                            ? "bg-teal-50 text-teal-600 font-medium"
-                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
-                        }`}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
+              {open && <div>{section.items.map((item) => <Link key={item.href} href={item.href} className={`block mx-2 rounded-md px-8 py-2 text-sm ${pathname === item.href ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}>{item.label}</Link>)}</div>}
             </div>
           );
         })}
