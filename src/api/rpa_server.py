@@ -10,6 +10,7 @@ import gspread
 import pytz
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -155,6 +156,15 @@ def build_app() -> FastAPI:
             "Unified local control server for legacy trigger endpoints, "
             "integration dashboard, and the D-2 relief-request backoffice."
         ),
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     dashboard_service = build_integration_task_service()

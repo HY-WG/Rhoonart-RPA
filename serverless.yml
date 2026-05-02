@@ -24,6 +24,9 @@ provider:
     SMTP_PORT: ${env:SMTP_PORT, "587"}
     SMTP_USER: ${env:SMTP_USER, ""}
     SMTP_PASSWORD: ${env:SMTP_PASSWORD, ""}
+    SUPABASE_URL: ${env:SUPABASE_URL, ""}
+    SUPABASE_SERVICE_ROLE_KEY: ${env:SUPABASE_SERVICE_ROLE_KEY, ""}
+    B2_TEST_MAX_CLIPS: ${env:B2_TEST_MAX_CLIPS, "2000"}
 
     # Shared sheets
     CONTENT_SHEET_ID: ${env:CONTENT_SHEET_ID}
@@ -125,6 +128,27 @@ functions:
           path: /report/weekly
           method: post
           cors: true
+
+  # B-2: Daily test report for Naver Clip enabled rights holders
+  b2DailyTestReport:
+    handler: lambda/b2_test_report_handler.handler
+    description: "B-2 daily Naver Clip test report, per-rights-holder Google Sheets, and email delivery"
+    timeout: 900
+    memorySize: 1024
+    environment:
+      SUPABASE_URL: ${env:SUPABASE_URL, ""}
+      SUPABASE_SERVICE_ROLE_KEY: ${env:SUPABASE_SERVICE_ROLE_KEY, ""}
+      B2_TEST_MAX_CLIPS: ${env:B2_TEST_MAX_CLIPS, "2000"}
+    events:
+      - schedule:
+          rate: cron(0 1 * * ? *)
+          enabled: true
+          input:
+            recipient: "kirby.lee@laeebly.com"
+            seed: true
+            triggered_by: "schedule"
+            share_sheets: true
+            send_email: true
 
   # C-1: YouTube Shorts lead discovery
   c1LeadFilter:

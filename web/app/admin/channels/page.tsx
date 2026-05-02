@@ -2,285 +2,303 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CheckSquare, X, Check, ExternalLink, RefreshCw } from "lucide-react";
+import { X } from "lucide-react";
 
+/* ─── 타입 ─── */
 type ChannelApproval = {
   id: string;
-  channel_id: string;
   channel_name: string;
-  channel_url: string;
+  channel_url: string | null;
   creator_email: string;
   status: "pending" | "approved" | "rejected";
   requested_at: string;
+  processed_at?: string | null;
 };
 
-function useChannelApprovals(status: string) {
+/* ─── 필터 탭 ─── */
+const TABS = [
+  { key: "all",      label: "전체" },
+  { key: "approved", label: "승인" },
+  { key: "pending",  label: "대기중" },
+  { key: "rejected", label: "거부" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+/* ─── 상태 표시 매핑 ─── */
+const STATUS_LABEL: Record<string, string> = {
+  approved: "승인",
+  pending:  "대기중",
+  rejected: "거부",
+};
+const statusStyle = (s: string) => {
+  if (s === "approved") return "bg-teal-50 text-teal-600";
+  if (s === "pending")  return "bg-yellow-50 text-yellow-600";
+  return "bg-red-50 text-red-500";
+};
+
+/* ─── 아바타 해시 ─── */
+const avatarSeed = (name: string) =>
+  `https://i.pravatar.cc/40?u=${encodeURIComponent(name)}`;
+
+/* ─── 날짜 포맷 ─── */
+const fmt = (s?: string | null) =>
+  s ? new Date(s).toLocaleDateString("ko-KR").replace(/\.$/, "") : "-";
+
+/* ─── Supabase 훅 ─── */
+function useChannels(tab: TabKey) {
   return useQuery({
-    queryKey: ["channel-approvals", status],
+    queryKey: ["channel-approvals", tab],
     queryFn: async () => {
       const supabase = createClient();
-      const query = supabase
+      let q = supabase
         .from("channel_approvals")
         .select("*")
         .order("requested_at", { ascending: false });
-
-      if (status !== "all") query.eq("status", status);
-      const { data, error } = await query;
+      if (tab !== "all") q = q.eq("status", tab);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ChannelApproval[];
     },
-    refetchInterval: 15000,
+    refetchInterval: 30_000,
   });
 }
 
-function useApprovalMutation() {
+function useAddChannel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      ids,
-      action,
-    }: {
-      ids: string[];
-      action: "approved" | "rejected";
+    mutationFn: async (payload: {
+      channel_name: string;
+      channel_url: string;
+      creator_email: string;
     }) => {
       const supabase = createClient();
       const { error } = await supabase
         .from("channel_approvals")
-        .update({ status: action, processed_at: new Date().toISOString() })
-        .in("id", ids);
+        .insert({ ...payload, status: "pending" });
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["channel-approvals"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["channel-approvals"] }),
   });
 }
 
-export default function ChannelsPage() {
-  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "all">("pending");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+/* ─── 채널 추가 모달 ─── */
+function AddChannelModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({
+    channel_name: "",
+    channel_url: "",
+    creator_email: "",
+  });
+  const mutation = useAddChannel();
 
-  const { data: items = [], isLoading, refetch } = useChannelApprovals(tab);
-  const mutation = useApprovalMutation();
-
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate(form, {
+      onSuccess: () => onClose(),
     });
   };
 
-  const toggleAll = () => {
-    setSelected(
-      selected.size === items.length
-        ? new Set()
-        : new Set(items.map((i) => i.id))
-    );
-  };
-
-  const handleBulkAction = (action: "approved" | "rejected") => {
-    if (selected.size === 0) return;
-    mutation.mutate(
-      { ids: Array.from(selected), action },
-      { onSuccess: () => setSelected(new Set()) }
-    );
-  };
-
-  const tabs = [
-    { key: "pending", label: "대기 중" },
-    { key: "approved", label: "승인됨" },
-    { key: "rejected", label: "거절됨" },
-    { key: "all", label: "전체" },
-  ] as const;
-
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <CheckSquare className="w-6 h-6 text-amber-500" />
-            채널 승인 관리
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            크리에이터 채널 초대 요청을 일괄 처리합니다.
-          </p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          새로고침
-        </button>
-      </div>
-
-      {/* 탭 */}
-      <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-lg w-fit">
-        {tabs.map(({ key, label }) => (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-gray-900">채널 추가</h2>
           <button
-            key={key}
-            onClick={() => {
-              setTab(key);
-              setSelected(new Set());
-            }}
-            className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${
-              tab === key
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
           >
-            {label}
+            <X className="w-5 h-5" />
           </button>
-        ))}
-      </div>
+        </div>
 
-      {/* Bulk Action 버튼 */}
-      {selected.size > 0 && (
-        <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl">
-          <span className="text-sm font-medium text-indigo-700">
-            {selected.size}개 선택됨
-          </span>
-          <div className="flex gap-2 ml-auto">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-700 mb-1.5">채널명 *</label>
+            <input
+              required
+              value={form.channel_name}
+              onChange={(e) => setForm((f) => ({ ...f, channel_name: e.target.value }))}
+              placeholder="채널 이름"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-700 mb-1.5">채널 URL</label>
+            <input
+              value={form.channel_url}
+              onChange={(e) => setForm((f) => ({ ...f, channel_url: e.target.value }))}
+              placeholder="https://youtube.com/@channel"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-700 mb-1.5">크리에이터 이메일 *</label>
+            <input
+              required
+              type="email"
+              value={form.creator_email}
+              onChange={(e) => setForm((f) => ({ ...f, creator_email: e.target.value }))}
+              placeholder="creator@example.com"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+
+          {mutation.isError && (
+            <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+              오류: {(mutation.error as Error)?.message}
+            </p>
+          )}
+
+          <div className="flex gap-3 pt-1">
             <button
-              onClick={() => handleBulkAction("approved")}
-              disabled={mutation.isPending}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 disabled:opacity-50"
-            >
-              <Check className="w-3.5 h-3.5" />
-              일괄 승인
-            </button>
-            <button
-              onClick={() => handleBulkAction("rejected")}
-              disabled={mutation.isPending}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 disabled:opacity-50"
-            >
-              <X className="w-3.5 h-3.5" />
-              일괄 거절
-            </button>
-            <button
-              onClick={() => setSelected(new Set())}
-              className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg"
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-300 text-sm text-gray-600 rounded-xl hover:bg-gray-50"
             >
               취소
             </button>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className="flex-1 py-2.5 bg-teal-500 text-white text-sm font-semibold rounded-xl hover:bg-teal-600 disabled:opacity-50"
+            >
+              {mutation.isPending ? "추가 중..." : "추가"}
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* 테이블 */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-            불러오는 중...
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
-            <CheckSquare className="w-8 h-8 opacity-30" />
-            <p className="text-sm">처리할 항목이 없습니다.</p>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selected.size === items.length && items.length > 0}
-                    onChange={toggleAll}
-                    className="rounded"
-                  />
-                </th>
-                <th className="text-left px-4 py-3 text-slate-500 font-medium">채널명</th>
-                <th className="text-left px-4 py-3 text-slate-500 font-medium">크리에이터</th>
-                <th className="text-left px-4 py-3 text-slate-500 font-medium">요청일</th>
-                <th className="text-left px-4 py-3 text-slate-500 font-medium">상태</th>
-                <th className="w-24 px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`hover:bg-slate-50 transition-colors ${
-                    selected.has(item.id) ? "bg-indigo-50" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(item.id)}
-                      onChange={() => toggleSelect(item.id)}
-                      className="rounded"
-                    />
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">
-                    <div className="flex items-center gap-2">
-                      {item.channel_name}
-                      {item.channel_url && (
-                        <a
-                          href={item.channel_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-slate-400 hover:text-indigo-500"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-500">{item.creator_email}</td>
-                  <td className="px-4 py-3 text-slate-400">
-                    {new Date(item.requested_at).toLocaleDateString("ko-KR")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.status === "pending" && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() =>
-                            mutation.mutate({ ids: [item.id], action: "approved" })
-                          }
-                          className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded"
-                          title="승인"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() =>
-                            mutation.mutate({ ids: [item.id], action: "rejected" })
-                          }
-                          className="p-1.5 text-red-400 hover:bg-red-50 rounded"
-                          title="거절"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        </form>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: ChannelApproval["status"] }) {
-  const map = {
-    pending: "bg-amber-50 text-amber-600",
-    approved: "bg-emerald-50 text-emerald-600",
-    rejected: "bg-red-50 text-red-500",
-  };
-  const label = { pending: "대기 중", approved: "승인됨", rejected: "거절됨" };
+/* ─── 메인 페이지 ─── */
+export default function ChannelsPage() {
+  const router = useRouter();
+  const [tab, setTab] = useState<TabKey>("all");
+  const [modalOpen, setModalOpen] = useState(false);
+  const { data: channels = [], isLoading } = useChannels(tab);
+
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[status]}`}>
-      {label[status]}
-    </span>
+    <>
+      <div className="p-8">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">채널 관리</h1>
+            <span className="px-3 py-1 bg-gray-100 text-gray-500 text-sm rounded-full font-medium">
+              전체 {channels.length}개
+            </span>
+          </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="px-5 py-2.5 bg-teal-500 text-white text-sm font-medium rounded-lg hover:bg-teal-600 transition-colors"
+          >
+            채널 추가
+          </button>
+        </div>
+
+        {/* 필터 탭 */}
+        <div className="flex gap-1 mb-5 bg-gray-100 p-1 rounded-xl w-fit">
+          {TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                tab === key
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 테이블 */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+              불러오는 중...
+            </div>
+          ) : channels.length === 0 ? (
+            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+              해당하는 채널이 없습니다.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">채널</th>
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">상태</th>
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">크리에이터</th>
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">등록일</th>
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">승인일</th>
+                  <th className="px-6 py-3.5 text-left text-sm text-gray-500 font-medium">관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channels.map((ch) => (
+                  <tr
+                    key={ch.id}
+                    onClick={() => router.push(`/admin/channels/${ch.id}`)}
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={avatarSeed(ch.channel_name)}
+                          alt={ch.channel_name}
+                          className="w-9 h-9 rounded-full object-cover shrink-0"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{ch.channel_name}</p>
+                          {ch.channel_url && (
+                            <a
+                              href={ch.channel_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-gray-400 hover:text-teal-500 truncate max-w-[160px] block"
+                            >
+                              {ch.channel_url}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-3 py-1 text-sm rounded-full font-medium ${statusStyle(ch.status)}`}
+                      >
+                        {STATUS_LABEL[ch.status] ?? ch.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{ch.creator_email}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{fmt(ch.requested_at)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{fmt(ch.processed_at)}</td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/admin/channels/${ch.id}`);
+                        }}
+                        className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                      >
+                        수정
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* 채널 추가 모달 */}
+      {modalOpen && <AddChannelModal onClose={() => setModalOpen(false)} />}
+    </>
   );
 }

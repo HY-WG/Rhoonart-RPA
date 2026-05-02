@@ -70,19 +70,20 @@ export async function middleware(request: NextRequest) {
 
   // admin 전용 경로 접근 시 역할 체크
   if (ADMIN_PATHS.some((p) => pathname.startsWith(p))) {
-    if (role !== "admin") {
-      // creator라면 portal로, 역할 없으면 login으로
+    if (role === "creator") {
+      // creator는 portal로
       const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = role === "creator" ? "/portal" : "/login";
+      redirectUrl.pathname = "/portal";
       return NextResponse.redirect(redirectUrl);
     }
+    // role이 없거나 admin이면 통과 (역할 미지정 유저도 dashboard 접근 허용)
   }
 
   // creator 전용 경로 접근 시 역할 체크
   if (CREATOR_PATHS.some((p) => pathname.startsWith(p))) {
     if (role !== "creator") {
       const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = role === "admin" ? "/admin" : "/login";
+      redirectUrl.pathname = role === "admin" ? "/admin" : "/dashboard";
       return NextResponse.redirect(redirectUrl);
     }
   }
