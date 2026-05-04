@@ -1,9 +1,24 @@
--- Migration 010: work_requests 컬럼 확장 + Slack upsert용 unique 인덱스
+-- Migration 010: work_requests 테이블 생성(없을 경우) + 컬럼 확장
 -- 실행: Supabase Dashboard > SQL Editor
 
 begin;
 
--- A-2 처리 시 채널명·이메일을 직접 저장 (creator_id FK 없이도 조회 가능)
+-- work_requests 테이블 생성 (없는 경우)
+create table if not exists public.work_requests (
+  id           uuid primary key default gen_random_uuid(),
+  creator_id   uuid references auth.users(id) on delete set null,
+  work_title   text not null,
+  channel_name  text,
+  creator_email text,
+  status       text not null default 'pending'
+                 check (status in ('pending', 'approved', 'rejected')),
+  requested_at timestamptz default now(),
+  processed_at timestamptz,
+  drive_link   text,
+  slack_ts     text
+);
+
+-- 이미 테이블이 있었다면 누락 컬럼만 추가
 alter table public.work_requests
   add column if not exists channel_name   text;
 
