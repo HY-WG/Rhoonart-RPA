@@ -276,6 +276,45 @@ def build_app() -> FastAPI:
         </html>
         """
 
+    @app.get("/api/admin/reports/metabase")
+    def metabase_report_naver() -> dict[str, Any]:
+        """네이버 클립 Metabase 대시보드 embed URL 반환."""
+        from urllib.parse import quote as _quote
+        url = settings.METABASE_NAVER_CLIP_URL
+        configured = bool(url)
+
+        def _append(base: str, key: str, value: str) -> str:
+            if not base:
+                return ""
+            sep = "&" if "?" in base else "?"
+            return f"{base}{sep}{key}={_quote(value)}"
+
+        # 권리사 목록: Supabase에서 조회 (실패 시 빈 목록)
+        rights_holders: list[dict[str, Any]] = []
+        try:
+            repo = build_naver_supabase_repository()
+            rh_list = repo.list_rights_holders(enabled_only=True)
+            rights_holders = [
+                {
+                    "id": rh.get("rights_holder_name", "").replace(" ", "-").lower(),
+                    "name": rh.get("rights_holder_name", ""),
+                    "embed_url": _append(url, "rights_holder", rh.get("rights_holder_name", "")),
+                    "configured": configured,
+                }
+                for rh in rh_list
+                if rh.get("rights_holder_name")
+            ]
+        except Exception:
+            pass
+
+        return {
+            "title": "네이버 클립 성과 확인",
+            "embed_url": url,
+            "configured": configured,
+            "env_key": "METABASE_NAVER_CLIP_URL",
+            "reports": rights_holders,
+        }
+
     @app.get("/api/admin/naver/content-catalog")
     @app.get("/api/admin/b2/content-catalog")
     def list_b2_content_catalog(_: None = Depends(_check_auth)) -> list[dict[str, Any]]:
