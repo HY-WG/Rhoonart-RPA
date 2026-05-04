@@ -82,8 +82,9 @@ def _build_deps():
         log_repo = SupabaseLogRepository(client)
         seed_repo = SupabaseSeedChannelRepository(client)
         slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CH)
-        return lead_repo, log_repo, slack_notifier, seed_repo
+        return lead_repo, log_repo, slack_notifier, seed_repo, client
 
+    creds = build_google_creds(CREDS_FILE, _SCOPES)
     creds = build_google_creds(CREDS_FILE, _SCOPES)
     gc = gspread.authorize(creds)
 
@@ -94,7 +95,7 @@ def _build_deps():
     log_repo  = SheetLogRepository(log_sh.worksheet(TAB_LOG))
     slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CH)
 
-    return lead_repo, log_repo, slack_notifier, None
+    return lead_repo, log_repo, slack_notifier, None, None
 
 
 def handler(event: dict, context) -> dict:
@@ -106,9 +107,22 @@ def handler(event: dict, context) -> dict:
         선택 필드: event["lead_sheet_url"] (str, Slack 링크용)
       - 그 외 (기본, cron): 월간 전체 탐색
     """
-    lead_repo, log_repo, slack_notifier, seed_repo = _build_deps()
+    lead_repo, log_repo, slack_notifier, seed_repo, supabase_client = _build_deps()
     source = event.get("source", "cron")
     seed_urls = seed_repo.list_seed_channel_urls() if seed_repo else None
+
+    # Supabase 블록리스트를 로컬 JSON에 동기화 (크롤러가 JSON 파일 참조)
+    if supabase_client:
+        try:
+            from src.core.crawlers._blocklist import block_channels as _block_json
+            sb_blocked_ids = seed_repo.get_blocklist_channel_ids()
+            if sb_blocked_ids:
+                _block_json(
+                    [{"channel_id": cid} for cid in sb_blocked_ids],
+                    reason="Supabase blocklist sync",
+                )
+        except Exception as exc:
+            log.warning("[C-1] Supabase 블록리스트 동기화 실패: %s", exc)
 
     if source == "work_threshold":
         work_title = event.get("work_title", "알 수 없는 작품")

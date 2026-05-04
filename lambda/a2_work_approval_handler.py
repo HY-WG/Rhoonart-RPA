@@ -39,6 +39,8 @@ LOG_SHEET_ID = os.environ.get("LOG_SHEET_ID", CREATOR_SHEET_ID)
 ADMIN_API_BASE_URL = os.environ.get("ADMIN_API_BASE_URL", "")
 USE_SES = os.environ.get("USE_SES", "true").lower() == "true"
 TAB_LOG = os.environ.get("TAB_LOG", "로그 기록")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY", "")
 
 
 def _build_deps():
@@ -51,7 +53,16 @@ def _build_deps():
 
     slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CH)
     email_notifier = EmailNotifier(sender_email=SENDER_EMAIL, use_ses=USE_SES)
-    return sheets_client, drive_service, log_repo, slack_notifier, email_notifier
+
+    supabase_client = None
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            from supabase import create_client  # type: ignore
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception as exc:
+            log.warning("[A-2] Supabase 클라이언트 초기화 실패: %s", exc)
+
+    return sheets_client, drive_service, log_repo, slack_notifier, email_notifier, supabase_client
 
 
 def handler(event: dict, context) -> dict[str, object]:
@@ -82,7 +93,7 @@ def handler(event: dict, context) -> dict[str, object]:
         return {"statusCode": 200, "body": "ignored"}
 
     slack_message_ts = slack_event.get("ts", "")
-    sheets_client, drive_service, log_repo, slack_notifier, email_notifier = _build_deps()
+    sheets_client, drive_service, log_repo, slack_notifier, email_notifier, supabase_client = _build_deps()
 
     @task_handler(
         task_id=TASK_ID,
@@ -105,6 +116,7 @@ def handler(event: dict, context) -> dict[str, object]:
             drive_folder_id=DRIVE_FOLDER_ID,
             sender_email=SENDER_EMAIL,
             admin_api_base_url=ADMIN_API_BASE_URL,
+            supabase_client=supabase_client,
         )
 
     try:

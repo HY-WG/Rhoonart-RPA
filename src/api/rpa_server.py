@@ -604,6 +604,187 @@ def build_app() -> FastAPI:
     def trigger_d3(request: GenericTriggerRequest, _: None = Depends(_check_auth)) -> dict[str, Any]:
         return _invoke_lambda("lambda.d3_kakao_creator_onboarding_handler", request.payload)
 
+    def _get_supabase():
+        """Supabase service-role 클라이언트 반환."""
+        from supabase import create_client  # type: ignore
+        return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+
+    # ── Work Requests (A-2) ──────────────────────────────────────────────────
+    @app.get("/api/admin/work-requests")
+    def list_work_requests(
+        status: str = "",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Supabase work_requests 조회."""
+        sb = _get_supabase()
+        q = (
+            sb.table("work_requests")
+            .select("*")
+            .order("requested_at", desc=True)
+            .range(offset, offset + limit - 1)
+        )
+        if status and status != "all":
+            q = q.eq("status", status)
+        result = q.execute()
+        return {"items": result.data or []}
+
+    # ── Lead Review (Human-in-the-Loop) ──────────────────────────────────────
+    class LeadPromoteRequest(BaseModel):
+        promoted_by: str = "admin"
+
+    class LeadBlockRequest(BaseModel):
+        reason: str = ""
+        blocked_by: str = "admin"
+
+    @app.get("/api/admin/leads")
+    def list_leads(
+        review_status: str = "pending",
+        grade: str = "",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Supabase lead_channels 조회. review_status 별 필터링."""
+        sb = _get_supabase()
+        q = (
+            sb.table("lead_channels")
+            .select("*")
+            .order("monthly_views", desc=True)
+            .range(offset, offset + limit - 1)
+        )
+        if review_status != "all":
+            q = q.eq("review_status", review_status)
+        if grade:
+            q = q.eq("grade", grade)
+        result = q.execute()
+        total = sb.table("lead_channels").select("channel_id", count="exact").execute()
+        return {"items": result.data or [], "total": getattr(total, "count", 0)}
+
+    @app.post("/api/admin/leads/{channel_id}/promote")
+    def promote_lead_to_seed(
+        channel_id: str,
+        body: LeadPromoteRequest,
+    ) -> dict[str, Any]:
+        """리드 채널을 seed_channel로 승격 + review_status='promoted' 업데이트."""
+        sb = _get_supabase()
+        now = datetime.now(KST).isoformat()
+
+        # 1. lead_channels 조회
+        lead_res = sb.table("lead_channels").select("*").eq("channel_id", channel_id).single().execute()
+        lead = lead_res.data
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"lead not found: {channel_id}")
+        if lead.get("review_status") == "blocked":
+            raise HTTPException(status_code=409, detail="이미 차단된 채널입니다.")
+
+        # 2. seed_channel upsert
+        sb.table("seed_channel").upsert(
+            {
+                "channel_url": lead["channel_url"],
+                "channel_name": lead.get("channel_name"),
+                "channel_id": channel_id,
+                "platform": lead.get("platform", "youtube"),
+                "active": True,
+                "promoted_from_lead_id": channel_id,
+                "promoted_by": body.promoted_by,
+                "promoted_at": now,
+            },
+            on_conflict="channel_url",
+        ).execute()
+
+        # 3. lead_channels review_status 업데이트
+        sb.table("lead_channels").update(
+            {
+                "review_status": "promoted",
+                "reviewed_at": now,
+                "reviewed_by": body.promoted_by,
+            }
+        ).eq("channel_id", channel_id).execute()
+
+        return {
+            "status": "promoted",
+            "channel_id": channel_id,
+            "channel_name": lead.get("channel_name"),
+            "channel_url": lead.get("channel_url"),
+            "promoted_by": body.promoted_by,
+            "promoted_at": now,
+        }
+
+    @app.post("/api/admin/leads/{channel_id}/block")
+    def block_lead(
+        channel_id: str,
+        body: LeadBlockRequest,
+    ) -> dict[str, Any]:
+        """리드 채널을 차단 + channel_blocklist 등록 + JSON 블록리스트 동기화."""
+        sb = _get_supabase()
+        now = datetime.now(KST).isoformat()
+
+        # 1. lead_channels 조회
+        lead_res = sb.table("lead_channels").select("*").eq("channel_id", channel_id).single().execute()
+        lead = lead_res.data
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"lead not found: {channel_id}")
+
+        # 2. Supabase channel_blocklist INSERT
+        sb.table("channel_blocklist").upsert(
+            {
+                "channel_id": channel_id,
+                "channel_name": lead.get("channel_name"),
+                "channel_url": lead.get("channel_url"),
+                "platform": lead.get("platform", "youtube"),
+                "reason": body.reason,
+                "blocked_at": now,
+                "blocked_by": body.blocked_by,
+            },
+            on_conflict="channel_id",
+        ).execute()
+
+        # 3. lead_channels review_status 업데이트
+        sb.table("lead_channels").update(
+            {
+                "review_status": "blocked",
+                "reviewed_at": now,
+                "reviewed_by": body.blocked_by,
+                "block_reason": body.reason,
+            }
+        ).eq("channel_id", channel_id).execute()
+
+        # 4. 로컬 JSON 블록리스트 동기화 (크롤러가 파일을 참조하므로)
+        try:
+            from src.core.crawlers._blocklist import block_channels as _block_json
+            _block_json(
+                [{"channel_id": channel_id, "name": lead.get("channel_name", "")}],
+                reason=body.reason,
+            )
+        except Exception:
+            pass  # JSON 동기화 실패해도 Supabase 기록은 완료
+
+        return {
+            "status": "blocked",
+            "channel_id": channel_id,
+            "channel_name": lead.get("channel_name"),
+            "reason": body.reason,
+            "blocked_by": body.blocked_by,
+            "blocked_at": now,
+        }
+
+    @app.delete("/api/admin/leads/{channel_id}/block")
+    def unblock_lead(channel_id: str) -> dict[str, Any]:
+        """차단 해제: channel_blocklist 삭제 + review_status → pending 복원."""
+        sb = _get_supabase()
+        sb.table("channel_blocklist").delete().eq("channel_id", channel_id).execute()
+        sb.table("lead_channels").update(
+            {"review_status": "pending", "reviewed_at": None, "block_reason": None}
+        ).eq("channel_id", channel_id).execute()
+
+        try:
+            from src.core.crawlers._blocklist import unblock_channels as _unblock_json
+            _unblock_json([channel_id])
+        except Exception:
+            pass
+
+        return {"status": "unblocked", "channel_id": channel_id}
+
     return app
 
 

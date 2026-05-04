@@ -97,6 +97,7 @@ def run(
     sender_email: str,
     admin_api_base_url: str = "",
     requested_at: Optional[datetime] = None,
+    supabase_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """A-2 작품 사용요청 승인 자동화를 실행한다."""
     requested_at = requested_at or datetime.now(KST)
@@ -146,7 +147,50 @@ def run(
         admin_api_updated=admin_updated,
     )
     log.info("[A-2] 처리 완료: %s", result.to_dict())
+
+    # Supabase work_requests 저장 (선택적)
+    if supabase_client:
+        _save_to_supabase(
+            supabase_client,
+            channel_name=channel_name,
+            work_title=work_title,
+            creator_email=applicant_email,
+            drive_link=file_url,
+            slack_ts=slack_message_ts,
+            requested_at=requested_at,
+        )
+
     return result.to_dict()
+
+
+def _save_to_supabase(
+    supabase_client: Any,
+    channel_name: str,
+    work_title: str,
+    creator_email: str,
+    drive_link: str,
+    slack_ts: str,
+    requested_at: datetime,
+) -> None:
+    """처리 결과를 Supabase work_requests 테이블에 저장한다."""
+    now = datetime.now(KST).isoformat()
+    try:
+        supabase_client.table("work_requests").upsert(
+            {
+                "work_title": work_title,
+                "channel_name": channel_name,
+                "creator_email": creator_email,
+                "status": "approved",
+                "requested_at": requested_at.isoformat(),
+                "processed_at": now,
+                "drive_link": drive_link,
+                "slack_ts": slack_ts or None,
+            },
+            on_conflict="slack_ts",
+        ).execute()
+        log.info("[A-2] Supabase work_requests 저장 완료: %s / %s", channel_name, work_title)
+    except Exception as exc:
+        log.warning("[A-2] Supabase work_requests 저장 실패: %s", exc)
 
 
 def _lookup_creator_email(sheets_client: Any, sheet_id: str, channel_name: str) -> str:

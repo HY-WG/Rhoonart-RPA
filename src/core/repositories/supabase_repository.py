@@ -27,6 +27,7 @@ from ...models.lead import EmailSentStatus, Genre
 
 LEAD_TABLE = "lead_channels"
 SEED_CHANNEL_TABLE = "seed_channel"
+BLOCKLIST_TABLE = "channel_blocklist"
 LOG_TABLE = "automation_runs"
 
 _STATUS_TO_DB = {
@@ -193,6 +194,20 @@ class SupabaseSeedChannelRepository:
             if url.startswith("http"):
                 urls.append(url)
         return urls
+
+    def get_blocklist_channel_ids(self, *, platform: str = "youtube") -> set[str]:
+        """Supabase channel_blocklist에서 차단된 channel_id 집합 반환.
+
+        크롤러의 로컬 JSON 블록리스트와 병합하여 사용한다.
+        """
+        response = (
+            self._client
+            .table(BLOCKLIST_TABLE)
+            .select("channel_id")
+            .eq("platform", platform)
+            .execute()
+        )
+        return {row["channel_id"] for row in (response.data or []) if row.get("channel_id")}
 
 
 class SupabaseLogRepository(ILogRepository):
