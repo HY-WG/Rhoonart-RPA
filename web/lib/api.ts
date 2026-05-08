@@ -13,6 +13,9 @@ import type {
   LeadDiscoveryResult,
   MetabaseReport,
   MyChannel,
+  OpsA3Report,
+  OpsB2Report,
+  OpsLeadSummary,
   PendingItem,
   Platform,
   ResourceSummary,
@@ -57,6 +60,9 @@ export const runLeadDiscovery = (videoId: string): Promise<LeadDiscoveryResult> 
   request("/api/admin/lead-discovery", { method: "POST", body: JSON.stringify({ video_id: videoId }) });
 export const fetchLeadDiscovery = (runId: string): Promise<LeadDiscoveryResult> => request(`/api/admin/lead-discovery/${runId}`);
 export const fetchMetabaseReport = (): Promise<MetabaseReport> => request("/api/admin/reports/metabase");
+export const fetchOpsB2Report = (): Promise<OpsB2Report> => request("/api/admin/ops/b2-report");
+export const fetchOpsA3Report = (): Promise<OpsA3Report> => request("/api/admin/ops/a3-report");
+export const fetchOpsLeadSummary = (): Promise<OpsLeadSummary> => request("/api/admin/ops/lead-summary");
 export const fetchResources = (): Promise<ResourceSummary> => request("/api/integration/resources");
 
 async function rpaRequest<T>(path: string, init?: RequestInit): Promise<T> {

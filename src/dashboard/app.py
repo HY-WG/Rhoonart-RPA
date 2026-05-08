@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -322,6 +322,74 @@ def build_app(service: IntegrationTaskService | None = None) -> FastAPI:
         if run_id.startswith("C-1-video-moving"):
             video = _MOCK_CHANNEL_VIDEOS[2]
         return {"run_id": run_id, "status": "completed", "video": video, "leads": _MOCK_DISCOVERED_LEADS}
+
+    @app.get("/api/admin/ops/b2-report")
+    def ops_b2_report() -> dict[str, Any]:
+        return {
+            "active_count": 3,
+            "rights_holders": [
+                {
+                    "name": "웨이브",
+                    "schedule_days": ["화"],
+                    "schedule_time": "오전 11시",
+                    "report_status": "completed",
+                },
+                {
+                    "name": "이놀미디어",
+                    "schedule_days": ["월", "화", "수", "목", "금"],
+                    "schedule_time": "오전 10시",
+                    "report_status": "completed",
+                },
+                {
+                    "name": "쿠팡플레이",
+                    "schedule_days": ["월", "수", "금"],
+                    "schedule_time": "오전 11시",
+                    "report_status": "completed",
+                },
+            ],
+        }
+
+    @app.get("/api/admin/ops/a3-report")
+    def ops_a3_report() -> dict[str, Any]:
+        _DAY_NAMES = ["(월)", "(화)", "(수)", "(목)", "(금)", "(토)", "(일)"]
+
+        def get_report_date(year: int, month: int) -> date:
+            d = date(year, month, 5)
+            dow = d.weekday()  # 0=Mon, 5=Sat, 6=Sun
+            if dow == 5:
+                d += timedelta(days=2)
+            elif dow == 6:
+                d += timedelta(days=1)
+            return d
+
+        today = date.today()
+        cur_year, cur_month = today.year, today.month
+        cur_date = get_report_date(cur_year, cur_month)
+
+        nxt_year = cur_year + 1 if cur_month == 12 else cur_year
+        nxt_month = 1 if cur_month == 12 else cur_month + 1
+        nxt_date = get_report_date(nxt_year, nxt_month)
+
+        def label(d: date) -> str:
+            return f"{d.month}월 {d.day}일 {_DAY_NAMES[d.weekday()]}"
+
+        return {
+            "current_month": {
+                "date": cur_date.isoformat(),
+                "label": label(cur_date),
+                "status": "completed" if today >= cur_date else "pending",
+            },
+            "next_month": {
+                "date": nxt_date.isoformat(),
+                "label": label(nxt_date),
+                "status": "pending",
+            },
+        }
+
+    @app.get("/api/admin/ops/lead-summary")
+    def ops_lead_summary() -> dict[str, Any]:
+        count = sum(1 for v in _MOCK_CHANNEL_VIDEOS if v.get("active_channel_count", 0) <= 5)
+        return {"videos_needing_leads": count}
 
     @app.get("/api/admin/reports/metabase")
     def metabase_report() -> dict[str, Any]:

@@ -182,6 +182,33 @@ export interface ApprovalRecord {
   execution_result?: Record<string, unknown> | null;
 }
 
+export interface OpsB2ReportRightsHolder {
+  name: string;
+  schedule_days: string[];
+  schedule_time: string;
+  report_status: "completed" | "pending";
+}
+
+export interface OpsB2Report {
+  active_count: number;
+  rights_holders: OpsB2ReportRightsHolder[];
+}
+
+export interface OpsReportDate {
+  date: string;
+  label: string;
+  status: "completed" | "pending";
+}
+
+export interface OpsA3Report {
+  current_month: OpsReportDate;
+  next_month: OpsReportDate;
+}
+
+export interface OpsLeadSummary {
+  videos_needing_leads: number;
+}
+
 export interface ResourceSummary {
   google_credentials_file: string;
   content_sheet_id: string;
