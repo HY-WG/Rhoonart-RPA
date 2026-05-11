@@ -1,6 +1,5 @@
 import type {
   ActionReceipt,
-  AdminChannel,
   ApprovalRecord,
   NaverAnalyticsOptions,
   NaverCollectResult,
@@ -10,7 +9,6 @@ import type {
   ExecutionMode,
   IntegrationRun,
   IntegrationTaskSpec,
-  LeadDiscoveryResult,
   MetabaseReport,
   MyChannel,
   OpsA3Report,
@@ -52,13 +50,7 @@ export const requestRelief = (videoId: string): Promise<ActionReceipt> =>
   request(`/api/channels/me/videos/${videoId}/relief-requests`, { method: "POST", body: JSON.stringify({ video_id: videoId }) });
 
 export const fetchAdminOverview = (): Promise<{ pending: PendingItem[] }> => request("/api/admin/overview");
-export const fetchAdminChannels = (): Promise<{ items: AdminChannel[] }> => request("/api/admin/channels");
 export const fetchAdminVideos = (): Promise<{ items: ChannelVideo[] }> => request("/api/admin/videos");
-export const registerAdminVideo = (payload: { title: string; rights_holder_name: string; registered_by?: string }): Promise<ActionReceipt> =>
-  request("/api/admin/videos", { method: "POST", body: JSON.stringify(payload) });
-export const runLeadDiscovery = (videoId: string): Promise<LeadDiscoveryResult> =>
-  request("/api/admin/lead-discovery", { method: "POST", body: JSON.stringify({ video_id: videoId }) });
-export const fetchLeadDiscovery = (runId: string): Promise<LeadDiscoveryResult> => request(`/api/admin/lead-discovery/${runId}`);
 export const fetchMetabaseReport = (): Promise<MetabaseReport> => request("/api/admin/reports/metabase");
 export const fetchOpsB2Report = (): Promise<OpsB2Report> => request("/api/admin/ops/b2-report");
 export const fetchOpsA3Report = (): Promise<OpsA3Report> => request("/api/admin/ops/a3-report");
