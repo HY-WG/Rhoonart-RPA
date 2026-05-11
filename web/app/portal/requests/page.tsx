@@ -9,6 +9,7 @@ import { FileText, Clock, CheckCircle, XCircle, PlusCircle } from "lucide-react"
 type WorkRequest = {
   id: string;
   work_title: string;
+  channel_name: string | null;
   status: "pending" | "approved" | "rejected";
   requested_at: string;
   processed_at: string | null;
@@ -29,7 +30,7 @@ async function fetchMyRequests(): Promise<WorkRequest[]> {
 
   const { data, error } = await supabase
     .from("work_requests")
-    .select("id, work_title, status, requested_at, processed_at, drive_link")
+    .select("id, work_title, channel_name, status, requested_at, processed_at, drive_link")
     .eq("creator_id", user.id)
     .order("requested_at", { ascending: false });
 
@@ -172,37 +173,47 @@ export default function RequestsPage() {
           return (
             <div
               key={req.id}
-              className="bg-white rounded-xl border border-slate-200 px-5 py-4 flex items-center justify-between"
+              className="bg-white rounded-xl border border-slate-200 overflow-hidden"
             >
-              <div className="flex items-center gap-4">
-                <div className={`p-2 rounded-lg ${clrBg}`}>
-                  <Icon className={`w-4 h-4 ${clrText}`} />
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`p-2 rounded-lg ${clrBg}`}>
+                    <Icon className={`w-4 h-4 ${clrText}`} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-800 text-sm">{req.work_title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      신청일: {new Date(req.requested_at).toLocaleDateString("ko-KR")}
+                      {req.processed_at && (
+                        <> · 처리일: {new Date(req.processed_at).toLocaleDateString("ko-KR")}</>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-slate-800 text-sm">{req.work_title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    신청일: {new Date(req.requested_at).toLocaleDateString("ko-KR")}
-                    {req.processed_at && (
-                      <> · 처리일: {new Date(req.processed_at).toLocaleDateString("ko-KR")}</>
-                    )}
+                <div className="flex items-center gap-3">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${meta.cls}`}>
+                    {meta.label}
+                  </span>
+                  {req.status === "approved" && req.drive_link && (
+                    <a
+                      href={req.drive_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-indigo-500 hover:underline"
+                    >
+                      파일 열기 →
+                    </a>
+                  )}
+                </div>
+              </div>
+              {req.status === "rejected" && (
+                <div className="px-5 py-3 border-t border-red-100 bg-red-50">
+                  <p className="text-xs text-red-600 leading-relaxed">
+                    아쉽게도 참여 심사 결과{req.channel_name ? ` ${req.channel_name} 채널이` : ""} 반려되었습니다.
+                    권리사 측 선정 기준에 따른 결정으로 상세 사유 안내가 어려운 점 양해 부탁드립니다.
                   </p>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${meta.cls}`}>
-                  {meta.label}
-                </span>
-                {req.status === "approved" && req.drive_link && (
-                  <a
-                    href={req.drive_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-indigo-500 hover:underline"
-                  >
-                    파일 열기 →
-                  </a>
-                )}
-              </div>
+              )}
             </div>
           );
         })}
