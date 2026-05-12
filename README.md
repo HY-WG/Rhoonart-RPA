@@ -484,6 +484,7 @@ ENABLE_EXTENDED_THINKING = os.getenv("AGENT_EXTENDED_THINKING", "false") == "tru
 | **A1** | tasks 레이어가 `src.api.dependencies`에서 `get_supabase` import — 레이어 위반 | 코드 동작은 하나 아키텍처 오염 | **Low** | `src/core/clients/supabase_client.py` 분리 | Claude |
 | **A2** | `@app.on_event("startup")` deprecated — Python 3.16에서 제거 예정 | Deprecation warning 248회, 현재 동작은 정상 | **Low** | `lifespan` 컨텍스트 매니저로 교체 | Claude |
 | **A3** | `datetime.utcnow()` deprecated | Deprecation warning만 | **Low** | `datetime.now(UTC)` 로 교체 | Claude |
+| **C1** | C-3 동명이작 — `work_title`만으로 작품 식별, 등록 전 중복 체크 없음[^c3-dup] | Stub: 동명이작이 동일 `work_id` 수령 → 가이드라인 덮어쓰기 발생 가능 | **High** | 복합 키(`title + rights_holder + year`) 기반 중복 조회 메서드 추가 | Human |
 
 ### 지금 당장 처리해야 할 Top 5
 
@@ -492,3 +493,7 @@ ENABLE_EXTENDED_THINKING = os.getenv("AGENT_EXTENDED_THINKING", "false") == "tru
 3. **[H1]** `PARTNER_HOLDER_NAME = "CJ"` 하드코딩 → 다른 권리사 로그인 시 아무것도 표시 안 됨
 4. **[I1]** `send_channel_claim_email` 실제 미발송 → 버튼 누르면 "완료"가 뜨지만 실제 메일은 발송되지 않음
 5. **[D1]** `integration_runs` 테이블 Supabase 적용 여부 → 대시보드 Runner 기능 전체가 DB 저장 실패 중일 수 있음
+
+---
+
+[^c3-dup]: 상세 분석은 [Notion — C-3 동명이작 문제](https://www.notion.so/D-2-34b4e58491f280bb823cf9e8a2f88dd1) 참고. 핵심: `work_title`만으로 식별 → 동명이작 등록 시 Stub은 동일 `work_id` 반환, 실 API는 기존 작품 가이드라인 덮어쓰기 또는 어드민 중복 노출 발생. 복합 키(`title + rights_holder + year`) 기반 중복 조회 및 사람 승인 흐름 필요.
