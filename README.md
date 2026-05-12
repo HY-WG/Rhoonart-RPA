@@ -529,7 +529,6 @@ ENABLE_EXTENDED_THINKING = os.getenv("AGENT_EXTENDED_THINKING", "false") == "tru
 - YouTube API 쿼터 초과 시 즉시 중단 (10,000 units/day)
 - 새 기능 구현 전 `.claude/rules/` 에 설계 문서 먼저 작성
 
-자세한 규칙은 [CLAUDE.md](.claude/CLAUDE.md)를 참고하세요.
 
 ---
 
