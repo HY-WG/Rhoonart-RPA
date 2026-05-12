@@ -1,9 +1,112 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchAdminChannels } from "@/lib/api";
+import { fetchSeedChannels, type SeedChannel } from "@/lib/api";
+import { CACHE_SEMI_STATIC } from "@/lib/query-client";
+
+const PLATFORM_LABEL: Record<string, string> = {
+  youtube: "YouTube",
+  naver: "네이버",
+  kakao: "카카오",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  active: "bg-emerald-100 text-emerald-700",
+  inactive: "bg-slate-100 text-slate-500",
+  pending: "bg-amber-100 text-amber-700",
+};
 
 export default function AdminChannelsPage() {
-  const query = useQuery({ queryKey: ["admin-channels"], queryFn: fetchAdminChannels });
-  return <div className="p-8"><h1 className="text-2xl font-bold text-slate-950">{"\ucc44\ub110\uc870\ud68c"}</h1><p className="mt-1 text-sm text-slate-500">{"\ub4f1\ub85d\ub41c \ucc44\ub110\uc758 \uc6b4\uc601 \uc0c1\ud0dc\uc640 \uc601\uc0c1 \uc218\ub97c \ud655\uc778\ud569\ub2c8\ub2e4."}</p><div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">{query.isLoading && <div className="p-8 text-center text-sm text-slate-500">{"\ucc44\ub110\uc744 \ubd88\ub7ec\uc624\ub294 \uc911\uc785\ub2c8\ub2e4."}</div>}{query.isError && <div className="p-8 text-center text-sm text-red-600">{(query.error as Error).message}</div>}{query.data && <table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3 font-medium">{"\ucc44\ub110\uba85"}</th><th className="px-5 py-3 font-medium">{"\ud50c\ub7ab\ud3fc"}</th><th className="px-5 py-3 font-medium">{"\ub2f4\ub2f9\uc790"}</th><th className="px-5 py-3 font-medium">{"\ub4f1\ub85d\uc77c"}</th><th className="px-5 py-3 font-medium">{"\uc601\uc0c1 \uc218"}</th><th className="px-5 py-3 font-medium">{"\uc0c1\ud0dc"}</th></tr></thead><tbody className="divide-y divide-slate-100">{query.data.items.map((channel) => <tr key={channel.channel_id} className="hover:bg-slate-50"><td className="px-5 py-4 font-medium text-slate-900">{channel.name}</td><td className="px-5 py-4 text-slate-600">{channel.platform}</td><td className="px-5 py-4 text-slate-600">{channel.owner}</td><td className="px-5 py-4 text-slate-600">{channel.registered_at}</td><td className="px-5 py-4 text-slate-600">{channel.video_count}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{channel.status}</span></td></tr>)}</tbody></table>}</div></div>;
+  const query = useQuery<{ items: SeedChannel[] }>({
+    queryKey: ["seed-channels"],
+    queryFn: () => fetchSeedChannels(),
+    ...CACHE_SEMI_STATIC,
+  });
+
+  const channels = query.data?.items ?? [];
+
+  return (
+    <div className="p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">채널 관리</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          등록된 시드 채널의 운영 상태를 확인합니다.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {query.isLoading && (
+          <div className="p-12 text-center text-sm text-slate-400">채널을 불러오는 중입니다…</div>
+        )}
+        {query.isError && (
+          <div className="p-8 text-center text-sm text-red-500">
+            오류: {(query.error as Error).message}
+          </div>
+        )}
+        {!query.isLoading && !query.isError && (
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-slate-200">
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">채널명</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">채널 ID</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">플랫폼</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">유형</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">담당자</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">상태</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase text-slate-500">URL</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {channels.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">
+                    등록된 채널이 없습니다.
+                  </td>
+                </tr>
+              )}
+              {channels.map((ch, idx) => (
+                <tr key={ch.channel_id ?? idx} className="hover:bg-slate-50/60 transition-colors">
+                  <td className="px-5 py-3.5 font-medium text-slate-900">
+                    {ch.channel_title ?? ch.channel_id ?? "-"}
+                  </td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">
+                    {ch.channel_id ?? "-"}
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600">
+                    {PLATFORM_LABEL[ch.platform ?? ""] ?? ch.platform ?? "-"}
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600">{ch.type ?? "-"}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{ch.managed_by ?? "-"}</td>
+                  <td className="px-5 py-3.5">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        STATUS_COLOR[ch.status ?? ""] ?? "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {ch.status ?? "-"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {ch.channel_url ? (
+                      <a
+                        href={ch.channel_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="max-w-[200px] truncate text-teal-600 hover:underline block"
+                        title={ch.channel_url}
+                      >
+                        {ch.channel_url}
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
 }

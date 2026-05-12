@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rhoonart RPA Architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    background: #f0f2f5;
+    padding: 40px 60px;
+    min-width: 900px;
+  }
+
+  h1.page-title {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 32px;
+    letter-spacing: -0.3px;
+  }
+
+  /* ── 공통 박스 ── */
+  .box {
+    border-radius: 10px;
+    padding: 14px 20px;
+    text-align: center;
+    position: relative;
+  }
+  .box .title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .box .sub {
+    font-size: 11px;
+    opacity: 0.75;
+    line-height: 1.5;
+  }
+
+  /* ── 화살표 ── */
+  .arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 28px;
+    color: #888;
+    font-size: 20px;
+  }
+
+  /* ── 레이어 색상 ── */
+  .layer-obs    { background: #e8e8f0; border: 1.5px solid #b0b0cc; color: #2d2d4e; }
+  .layer-gw     { background: #dce8f8; border: 1.5px solid #90b8e8; color: #1a3a5c; }
+  .layer-agent  { background: #d6e8ff; border: 2px solid #4a90d9; color: #1a3a6c; }
+  .layer-react  { background: #eaf3ff; border: 1.5px dashed #4a90d9; border-radius: 10px; padding: 16px; }
+  .layer-tools  { background: #d0eaff; border: 1.5px solid #5ba8e0; color: #1a3a5c; }
+  .layer-mem    { background: #e2f3e8; border: 1.5px solid #7ec8a0; color: #1a4a2a; }
+  .layer-hitl   { background: #fde8e8; border: 1.5px solid #e89090; color: #5a1a1a; }
+  .layer-obs2   { background: #f5f0e8; border: 1.5px solid #c8b87c; color: #4a3a10; }
+
+  /* ── 섹션 그리드 ── */
+  .row {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    margin-bottom: 0;
+  }
+  .row .box { flex: 1; }
+
+  /* ── ReAct 내부 스텝 ── */
+  .react-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .step-box {
+    background: white;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2a5a9c;
+    border: 1.5px solid #90b8e8;
+    text-align: center;
+    min-width: 80px;
+  }
+  .step-box.llm {
+    background: #fff3cd;
+    border-color: #f0b429;
+    color: #7a4a00;
+  }
+  .step-box.pause {
+    background: #fde8e8;
+    border-color: #e89090;
+    color: #7a1a1a;
+    font-size: 11px;
+  }
+  .step-arrow {
+    font-size: 16px;
+    color: #888;
+    padding: 0 4px;
+  }
+  .step-sub {
+    font-size: 10px;
+    font-weight: 400;
+    color: #888;
+    margin-top: 2px;
+  }
+
+  /* ── 하단 div ── */
+  .dashed-label {
+    text-align: center;
+    font-size: 11px;
+    color: #999;
+    margin: 14px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dashed-label::before,
+  .dashed-label::after {
+    content: '';
+    flex: 1;
+    border-top: 1.5px dashed #ccc;
+  }
+
+  /* ── HITL 박스 ── */
+  .hitl-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .hitl-box {
+    background: #fff0f0;
+    border: 1.5px solid #f0a0a0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .hitl-box .num {
+    display: inline-block;
+    background: #e07070;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    margin-bottom: 6px;
+  }
+  .hitl-box .title { font-size: 12px; font-weight: 700; color: #5a1a1a; margin-bottom: 4px; }
+  .hitl-box .sub   { font-size: 10px; color: #884040; line-height: 1.5; }
+
+  /* ── Memory ── */
+  .mem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .mem-box {
+    background: #eaf5ee;
+    border: 1.5px solid #85c49a;
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .mem-box .title { font-size: 12px; font-weight: 700; color: #1a4a2a; margin-bottom: 4px; }
+  .mem-box .sub   { font-size: 10px; color: #336644; line-height: 1.5; }
+
+  /* ── Tool 그리드 ── */
+  .tool-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  .tool-tag {
+    background: white;
+    border: 1.5px solid #6aade0;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1a4a7a;
+  }
+  .tool-tag.approval {
+    border-color: #e08060;
+    color: #7a2a00;
+    background: #fff5f0;
+  }
+
+  /* ── 에이전트 박스 내부 ── */
+  .agent-header {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a3a6c;
+    margin-bottom: 4px;
+  }
+  .agent-sub {
+    font-size: 11px;
+    color: #5070a0;
+    margin-bottom: 12px;
+  }
+  .max-steps-badge {
+    display: inline-block;
+    background: #ff6b6b;
+    color: white;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-top: 10px;
+  }
+
+  /* ── Gateway 내부 ── */
+  .gw-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .gw-item {
+    background: white;
+    border: 1.5px solid #90c0f0;
+    border-radius: 7px;
+    padding: 6px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #1a4a7a;
+    text-align: center;
+  }
+
+  .section { margin-bottom: 4px; }
+
+  .obs-sub {
+    font-size: 11px;
+    color: #5a5a7a;
+    margin-top: 4px;
+  }
+
+  .checkpoint-note {
+    font-size: 10px;
+    color: #c06060;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Rhoonart RPA — Agent Architecture</h1>
+
+<!-- ① Observation Layer -->
+<div class="box layer-obs section">
+  <div class="title">Observation layer — 이벤트 수집</div>
+  <div class="sub">Slack webhook · AWS EventBridge · Cron · Google Sheets · API Gateway</div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ② Input Gateway -->
+<div class="box layer-gw section">
+  <div class="title">Input Gateway</div>
+  <div class="sub">이벤트 분류 · 파싱 · TaskEnvelope 정규화 · 인증 검사</div>
+  <div class="gw-grid">
+    <div class="gw-item">Slack<br><span style="font-weight:400;color:#666">A-2 작품신청</span></div>
+    <div class="gw-item">HTTP<br><span style="font-weight:400;color:#666">B-2 · C-1 · C-2</span></div>
+    <div class="gw-item">Email<br><span style="font-weight:400;color:#666">A-0 초대메일</span></div>
+    <div class="gw-item">Manual<br><span style="font-weight:400;color:#666">대시보드 수동</span></div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ③ RhoArtAgent -->
+<div class="box layer-agent section" style="padding:18px 20px;">
+  <div class="agent-header">RhoArtAgent — ReAct Loop</div>
+  <div class="agent-sub">단일 에이전트 · claude-3-5-haiku-20241022</div>
+
+  <div class="layer-react">
+    <div style="font-size:11px;font-weight:600;color:#4a6a9c;margin-bottom:10px;">ReAct 사이클</div>
+    <div class="react-steps">
+      <div class="step-box">
+        Observe
+        <div class="step-sub">컨텍스트 조립</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step-box llm">
+        ★ Think
+        <div class="step-sub">Claude API 호출<br>도구·파라미터 선택</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step-box">
+        Act
+        <div class="step-sub">ToolRegistry 실행</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step-box">
+        Reflect
+        <div class="step-sub">결과 평가<br>continue?</div>
+      </div>
+      <div class="step-arrow" style="color:#e07070">→</div>
+      <div class="step-box pause">
+        Pause
+        <div class="step-sub">승인 필요 시<br>checkpoint 저장</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:#7a9aca;text-align:center;">
+      observation 갱신 → 루프 반복 (MAX_STEPS = 15)
+    </div>
+  </div>
+  <div style="display:flex;gap:12px;margin-top:12px;justify-content:center;">
+    <div style="background:#fff3cd;border:1.5px solid #f0b429;border-radius:8px;padding:6px 14px;font-size:11px;color:#7a4a00;font-weight:600;">
+      ★ _think()에서만 Claude 호출
+    </div>
+    <div style="background:#ffe0e0;border:1.5px solid #e08080;border-radius:8px;padding:6px 14px;font-size:11px;color:#7a1a00;font-weight:600;">
+      MAX_STEPS 초과 → FAILED 안전 종료
+    </div>
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ④ Tool Execution Layer -->
+<div class="box layer-tools section">
+  <div class="title">Tool Execution Layer — AWS Lambda</div>
+  <div class="sub">Pydantic 입력 검증 · importlib 핸들러 직접 호출</div>
+  <div class="tool-grid">
+    <div class="tool-tag">run_a0_admin_channel_approval</div>
+    <div class="tool-tag approval">run_a2_work_approval ★승인</div>
+    <div class="tool-tag">run_a3_naver_clip_monthly</div>
+    <div class="tool-tag">run_b2_weekly_report</div>
+    <div class="tool-tag">run_c1_lead_discovery</div>
+    <div class="tool-tag approval">run_c2_cold_email ★승인</div>
+    <div class="tool-tag approval">run_c3_work_register ★승인</div>
+    <div class="tool-tag approval">run_d2_relief_request ★승인</div>
+    <div class="tool-tag">run_d3_kakao_onboarding</div>
+  </div>
+  <div style="margin-top:10px;font-size:10px;color:#5090c0;">
+    gspread · Slack SDK · Gmail API · Google Drive · Supabase · Looker Studio
+  </div>
+</div>
+
+<div class="arrow">↓</div>
+
+<!-- ⑤ Memory -->
+<div class="mem-grid section">
+  <div class="mem-box">
+    <div class="title">Short-term Memory</div>
+    <div class="sub">
+      AgentTrace (실행 중 스텝 이력)<br>
+      TraceStep[] · to_checkpoint()<br>
+      루프 내 observation 갱신
+    </div>
+  </div>
+  <div class="mem-box">
+    <div class="title">Long-term Memory</div>
+    <div class="sub">
+      Supabase · Google Sheets<br>
+      agent_traces · agent_approvals<br>
+      실행 이력 · 감사 로그
+    </div>
+  </div>
+</div>
+
+<!-- ⑥ HITL -->
+<div class="dashed-label">— Human-in-the-loop boundary —</div>
+
+<div class="hitl-grid section">
+  <div class="hitl-box">
+    <div><span class="num">①</span></div>
+    <div class="title">고위험 도구 실행 전</div>
+    <div class="sub">
+      A-2 Drive 권한 부여<br>
+      C-2 콜드메일 발송<br>
+      D-2 권리사 이메일<br>
+      Slack 승인 버튼
+    </div>
+  </div>
+  <div class="hitl-box">
+    <div><span class="num">②</span></div>
+    <div class="title">외부 발송 전 확인</div>
+    <div class="sub">
+      B-2 권리사 주간보고 발송<br>
+      데이터 diff 확인<br>
+      C-3 어드민 API 등록<br>
+      checkpoint 재개
+    </div>
+  </div>
+  <div class="hitl-box">
+    <div><span class="num">③</span></div>
+    <div class="title">오류·에스컬레이션</div>
+    <div class="sub">
+      신뢰도 임계값 미달 시<br>
+      MAX_STEPS 초과 시<br>
+      담당자 Slack DM<br>
+      에러 채널 알림
+    </div>
+  </div>
+</div>
+
+<!-- ⑦ Observability -->
+<div class="dashed-label">— Observability —</div>
+
+<div class="box layer-obs2 section">
+  <div class="title">AgentTrace (내장) + AWS CloudWatch</div>
+  <div class="sub">실행 추적 · 상태 체크포인트 · 오류율 · 에이전트 경로 리플레이<br>
+  trace_id · task_id · steps_count · started_at · finished_at · status</div>
+</div>
+
+</body>
+</html>

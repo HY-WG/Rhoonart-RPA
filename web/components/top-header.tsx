@@ -7,6 +7,7 @@ import { LayoutDashboard } from "lucide-react";
 const tabs = [
   { href: "/portal", label: "\ub0b4 \ucc44\ub110" },
   { href: "/admin", label: "\uc5b4\ub4dc\ubbfc" },
+  { href: "/partner", label: "\ud30c\ud2b8\ub108" },
 ];
 
 export default function TopHeader() {

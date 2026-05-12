@@ -34,7 +34,11 @@ class ToolSpec(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     def to_llm_description(self) -> dict[str, Any]:
-        """LLM 프롬프트에 삽입할 도구 설명 딕셔너리."""
+        """LLM 프롬프트 텍스트에 삽입할 도구 설명 딕셔너리 (레거시 / 디버그용).
+
+        Anthropic native tool_use API 를 사용할 때는 :meth:`to_anthropic_tool` 을
+        사용하고, 이 메서드는 로깅·디버그 목적으로만 유지한다.
+        """
         return {
             "name": self.name,
             "description": self.description,
@@ -43,6 +47,33 @@ class ToolSpec(BaseModel):
             "supports_dry_run": self.supports_dry_run,
             "browser_supported": self.browser_supported,
             "input_schema": self.input_model.model_json_schema(),
+        }
+
+    def to_anthropic_tool(self) -> dict[str, Any]:
+        """Anthropic ``tools`` 파라미터 형식으로 변환한다.
+
+        Pydantic ``model_json_schema()`` 가 생성한 스키마에서 ``properties`` /
+        ``required`` / ``$defs`` 를 추출하여 Anthropic API 가 요구하는
+        ``input_schema`` 구조로 정규화한다.
+
+        Returns:
+            ``{"name": ..., "description": ..., "input_schema": {...}}``
+            형식의 딕셔너리.  ``input_schema.type`` 은 항상 ``"object"`` 다.
+        """
+        schema = self.input_model.model_json_schema()
+        input_schema: dict[str, Any] = {
+            "type": "object",
+            "properties": schema.get("properties", {}),
+        }
+        if "required" in schema:
+            input_schema["required"] = schema["required"]
+        # 중첩 모델이 있을 때 Pydantic 이 생성하는 $defs 를 그대로 전달
+        if "$defs" in schema:
+            input_schema["$defs"] = schema["$defs"]
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": input_schema,
         }
 
 
@@ -108,8 +139,46 @@ class ToolRegistry:
         return list(self._specs.keys())
 
     def describe_all(self) -> list[dict[str, Any]]:
-        """전체 도구의 LLM 설명 목록 (Think 단계 프롬프트에 주입용)."""
+        """전체 도구의 LLM 설명 목록 (로깅·디버그용 레거시 메서드).
+
+        Anthropic native tool_use API 를 사용할 때는 :meth:`to_anthropic_tools` 를
+        사용하라.
+        """
         return [spec.to_llm_description() for spec in self._specs.values()]
+
+    def to_anthropic_tools(self, *, include_finish: bool = True) -> list[dict[str, Any]]:
+        """Anthropic ``messages.create(tools=...)`` 파라미터용 도구 목록을 반환한다.
+
+        각 항목은 :meth:`ToolSpec.to_anthropic_tool` 형식이며, ``include_finish=True``
+        (기본값) 일 때 LLM 이 작업 완료를 신호할 수 있도록 ``finish`` 가상 도구를
+        목록 끝에 추가한다.
+
+        Args:
+            include_finish: ``True`` 면 ``finish`` 가상 도구를 목록에 포함한다.
+
+        Returns:
+            ``[{"name": ..., "description": ..., "input_schema": {...}}, ...]``
+        """
+        tools = [spec.to_anthropic_tool() for spec in self._specs.values()]
+        if include_finish:
+            tools.append({
+                "name": "finish",
+                "description": (
+                    "모든 업무가 완료됐을 때 호출한다. "
+                    "완료 요약을 summary 필드에 담아 반환한다."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "완료 내용 한 줄 요약 (한국어)",
+                        },
+                    },
+                    "required": [],
+                },
+            })
+        return tools
 
     def __contains__(self, name: str) -> bool:
         return name in self._specs

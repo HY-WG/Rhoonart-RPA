@@ -19,11 +19,9 @@
   │                                                                         │
   │  제목 수집 기준 (scripts/drama_titles.json):                            │
   │    1) manual_titles  : 담당자가 직접 입력·관리 (항상 최우선)             │
-  │    2) auto_titles    : 드라마 클립 영상에서 자동 추출 (7일 캐시)         │
-  │                        추출 방식:                                        │
-  │                          a) 영상 제목의 한국어 hashtag (#드라마명)        │
-  │                          b) 에피소드 마커 앞 제목 (N화, EP N)            │
-  │                        검색어: "드라마 명장면", "한국 드라마 클립"        │
+  │    2) auto_titles    : TMDB/KOBIS 기준 데이터에서 자동 수집 (7일 캐시)   │
+  │                        TMDB: 한국 드라마/한국어 영화 인기·방영/개봉 목록 │
+  │                        KOBIS: 최근 7일 국내 박스오피스 영화 목록          │
   │                                                                         │
   │  검색 제한 조건:                                                         │
   │    · publishedAfter  : 최근 6개월 이내 게시된 Shorts만 검색              │
@@ -73,6 +71,7 @@ from ._drama_title import (
     load_drama_titles_file as _load_drama_titles_file,
     save_drama_titles_file as _save_drama_titles_file,
     update_manual_drama_titles,       # 공개 함수 — 이름 유지
+    collect_reference_titles as _collect_reference_titles,
     MAX_DRAMA_TITLES      as _MAX_DRAMA_TITLES,
     TITLE_SEARCH_MONTHS   as _TITLE_SEARCH_MONTHS,
     TITLE_CACHE_DAYS      as _TITLE_CACHE_DAYS,
@@ -187,6 +186,15 @@ class YouTubeShortsCrawler:
         self._growth_thr = growth_threshold
         self._quota_used = 0
         self._blocklist: set[str] = _load_blocklist()
+        self.last_drama_titles: list[str] = []
+        self.discovery_debug_log: list[dict[str, object]] = []
+
+    def _debug(self, stage: str, message: str, **data: object) -> None:
+        self.discovery_debug_log.append({
+            "stage": stage,
+            "message": message,
+            **data,
+        })
 
     # ── public ────────────────────────────────────────────────────────────
 
@@ -196,6 +204,7 @@ class YouTubeShortsCrawler:
 
         seed_ids = self._resolve_seed_channel_ids()
         log.info("시드 채널 %d개 확인", len(seed_ids))
+        self._debug("seed", f"시드 채널 {len(seed_ids)}개 확인", seed_count=len(seed_ids))
 
         candidate_ids: set[str] = set()
 
@@ -208,12 +217,28 @@ class YouTubeShortsCrawler:
             before = len(candidate_ids)
             candidate_ids.update(ids)
             log.info("  채널검색 '%s' → +%d채널 (누계 %d)", keyword, len(candidate_ids) - before, len(candidate_ids))
+            self._debug(
+                "layer_a",
+                f"채널명 키워드 '{keyword}' 검색",
+                keyword=keyword,
+                found=len(ids),
+                added=len(candidate_ids) - before,
+                total=len(candidate_ids),
+            )
         log.info("[Layer A] 완료 — %d개 후보", len(candidate_ids))
+
+        drama_titles = self._get_drama_titles()
+        self.last_drama_titles = drama_titles
+        self._debug(
+            "title_selection",
+            "TMDB/KOBIS 기준 최근 인기·방영/개봉 작품 제목을 검색어로 선정",
+            titles=drama_titles,
+            title_count=len(drama_titles),
+        )
 
         # ── Layer B: 드라마·영화 제목 기반 키워드 탐색 ────────────────────
         if len(candidate_ids) < self._max_ch:
             log.info("[Layer B] 드라마·영화 제목 기반 탐색")
-            drama_titles = self._get_drama_titles()
             published_after = (
                 datetime.now(timezone.utc) - timedelta(days=_TITLE_SEARCH_MONTHS * 30)
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -230,6 +255,14 @@ class YouTubeShortsCrawler:
                     before = len(candidate_ids)
                     candidate_ids.update(ids)
                     log.info("  '%s' → +%d채널 (누계 %d)", query, len(candidate_ids) - before, len(candidate_ids))
+                    self._debug(
+                        "layer_b",
+                        f"작품 제목 기반 '{query}' 검색",
+                        query=query,
+                        found=len(ids),
+                        added=len(candidate_ids) - before,
+                        total=len(candidate_ids),
+                    )
                     if len(candidate_ids) >= self._max_ch:
                         break
             log.info("[Layer B] 완료 — %d개 후보", len(candidate_ids))
@@ -240,6 +273,13 @@ class YouTubeShortsCrawler:
         candidate_ids -= self._blocklist
         if blocked_removed:
             log.info("블록리스트 제외 %d개", blocked_removed)
+        self._debug(
+            "filter",
+            f"시드·블록리스트 제외 후 후보 채널 {len(candidate_ids)}개",
+            seed_excluded=len(seed_ids),
+            blocked_excluded=blocked_removed,
+            candidate_count=len(candidate_ids),
+        )
         candidate_ids = set(list(candidate_ids)[: self._max_ch])
         log.info("후보 채널 %d개 (시드·블록리스트 제외 후)", len(candidate_ids))
 
@@ -257,6 +297,28 @@ class YouTubeShortsCrawler:
         # 등급 분류
         for ch in discoveries:
             ch.tier = self._classify(ch)
+        tier_counts = {
+            "A": sum(1 for c in discoveries if c.tier == "A"),
+            "B": sum(1 for c in discoveries if c.tier == "B"),
+            "B?": sum(1 for c in discoveries if c.tier == "B?"),
+            "C": sum(1 for c in discoveries if c.tier == "C"),
+        }
+        self._debug(
+            "classification",
+            f"후보 {len(discoveries)}개 분류: A {tier_counts['A']}개, B {tier_counts['B']}개, B? {tier_counts['B?']}개, C {tier_counts['C']}개",
+            tier_counts=tier_counts,
+            below_threshold=[
+                {
+                    "channel_id": c.channel_id,
+                    "channel_name": c.name,
+                    "monthly_shorts_views": c.monthly_shorts_views,
+                    "subscriber_count": c.subscriber_count,
+                    "tier": c.tier,
+                }
+                for c in discoveries
+                if c.tier == "C"
+            ][:50],
+        )
 
         self._save_history(discoveries)
 
@@ -339,9 +401,7 @@ class YouTubeShortsCrawler:
         우선순위:
           1. drama_titles.json의 manual_titles (담당자 직접 입력, 항상 포함)
           2. drama_titles.json의 auto_titles (캐시 유효 시 재사용)
-          3. 드라마 클립 영상에서 자동 추출 후 캐시 갱신
-             - 영상 제목의 한국어 hashtag (#마지막썸머, #탁류)
-             - 에피소드 마커 앞 드라마명 (N화, EP N)
+          3. TMDB/KOBIS 기준 데이터에서 최신·인기 드라마/영화 제목 수집
         """
         data = _load_drama_titles_file()
         manual_titles: list[str] = data.get("manual_titles", [])
@@ -362,10 +422,13 @@ class YouTubeShortsCrawler:
             log.info("  [Layer B] 드라마 제목 캐시 사용 (%d개, 갱신: %s)",
                      len(auto_titles), updated_at_str[:10])
         else:
-            log.info("  [Layer B] 드라마 클립 영상에서 제목 자동 추출 중...")
-            auto_titles = self._extract_drama_titles_from_clip_search()
+            log.info("  [Layer B] TMDB/KOBIS 기준 데이터에서 제목 자동 수집 중...")
+            auto_titles = _collect_reference_titles(max_titles=_MAX_DRAMA_TITLES)
+            if not auto_titles:
+                log.warning("  [Layer B] TMDB/KOBIS 제목 수집 실패 — YouTube 제목 추출 fallback 사용")
+                auto_titles = self._extract_drama_titles_from_clip_search()
             _save_drama_titles_file(manual_titles=manual_titles, auto_titles=auto_titles)
-            log.info("  [Layer B] 자동 추출 완료 — %d개 제목", len(auto_titles))
+            log.info("  [Layer B] 자동 제목 수집 완료 — %d개 제목", len(auto_titles))
 
         seen: set[str] = set()
         result: list[str] = []

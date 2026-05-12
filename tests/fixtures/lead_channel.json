@@ -1,0 +1,15 @@
+{
+  "channel_id": "UCtest123",
+  "channel_name": "테스트유튜브채널",
+  "channel_url": "https://www.youtube.com/@test123",
+  "email": "lead@example.com",
+  "subscriber_count": 50000,
+  "view_count": 1000000,
+  "platform": "youtube",
+  "status": "new",
+  "review_status": "pending",
+  "email_status": null,
+  "promoted_by": null,
+  "blocked_reason": null,
+  "created_at": "2026-05-01T00:00:00+09:00"
+}

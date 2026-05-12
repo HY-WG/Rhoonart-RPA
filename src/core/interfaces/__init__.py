@@ -7,6 +7,7 @@ from .repository import (
     ILogRepository,
 )
 from .notifier import INotifier
+from .task_handler import ITaskHandler, TaskMeta
 
 __all__ = [
     "ICreatorRepository",
@@ -16,4 +17,6 @@ __all__ = [
     "ILeadRepository",
     "ILogRepository",
     "INotifier",
+    "ITaskHandler",
+    "TaskMeta",
 ]

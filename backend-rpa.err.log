@@ -1,0 +1,21 @@
+INFO:     Started server process [20264]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+failed to mark official document requested: {'code': '42703', 'details': None, 'hint': None, 'message': 'column copyright_claims.completed does not exist'}
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+failed to mark official document requested: {'code': '42703', 'details': None, 'hint': None, 'message': 'column copyright_claims.completed does not exist'}
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+failed to mark official document requested: {'code': '42703', 'details': None, 'hint': None, 'message': 'column copyright_claims.completed does not exist'}
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+failed to mark official document requested: {'code': '42703', 'details': None, 'hint': None, 'message': 'column copyright_claims.completed does not exist'}
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.
+copyright_claims status columns missing; listing without filter. Apply migrations/017 and 018.

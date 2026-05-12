@@ -25,6 +25,7 @@ class Work:
     platforms: list[str] = field(default_factory=list)  # 영상 공개 플랫폼
     platform_video_url: str = ""        # 플랫폼 영상 링크
     trailer_url: str = ""               # 영상 예고영상 링크
+    thumbnail_url: str = ""             # 영화/드라마 썸네일 이미지 URL
     source_download_url: str = ""       # 원본 다운로드 링크
     # ── 가이드라인 필드 (레이블리 어드민 '영상 등록' 화면) ─────────────────────────
     guideline_text: str = ""            # 숏츠 제작 가이드 (어드민 직접 입력용 텍스트)

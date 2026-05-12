@@ -1,0 +1,13 @@
+{
+  "id": "wr-001",
+  "channel_name": "테스트채널",
+  "work_title": "테스트작품",
+  "creator_email": "creator@example.com",
+  "status": "pending",
+  "slack_ts": "1234567890.123456",
+  "requested_at": "2026-05-01T09:00:00+09:00",
+  "processed_at": null,
+  "decision_note": null,
+  "decided_by": null,
+  "rejection_message": null
+}

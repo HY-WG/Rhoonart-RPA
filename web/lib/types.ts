@@ -56,6 +56,21 @@ export interface ChannelVideo {
   active_channel_count: number;
 }
 
+export interface WorkRequest {
+  id: string | number;
+  work_title: string;
+  channel_name?: string | null;
+  creator_email?: string | null;
+  status: "pending" | "approved" | "rejected" | string;
+  requested_at: string;
+  processed_at?: string | null;
+  drive_link?: string | null;
+  slack_ts?: string | null;
+  decision_note?: string | null;
+  decided_by?: string | null;
+  rejection_message?: string | null;
+}
+
 export interface AdminChannel {
   channel_id: string;
   name: string;
@@ -66,11 +81,28 @@ export interface AdminChannel {
   video_count: number;
 }
 
+export interface RightsHolderCardItem {
+  name: string;
+  schedule: string;
+  status: "보고 완료" | "보고 대기중" | string;
+}
+
+export interface ReportDates {
+  current: string;
+  current_sent: boolean;
+  next: string;
+  next_sent: boolean;
+}
+
 export interface PendingItem {
   id: string;
   title: string;
   metric_label: string;
   count: number;
+  href?: string;
+  status?: string;
+  rights_holders?: RightsHolderCardItem[];
+  report_dates?: ReportDates;
 }
 
 export interface Lead {
@@ -93,6 +125,9 @@ export interface MetabaseRightsHolderReport {
   id: string;
   name: string;
   embed_url: string;
+  email?: string | null;
+  mail?: string | null;
+  naver_report_enabled?: boolean;
   configured: boolean;
 }
 
@@ -104,6 +139,83 @@ export interface MetabaseReport {
   reports: MetabaseRightsHolderReport[];
 }
 
+export interface MetabaseReportSendResult {
+  status: string;
+  rights_holder_name: string;
+  recipients: string[];
+  dashboard_url: string;
+  sent_at: string;
+  elapsed_ms?: number;
+}
+
+export interface NaverMonthlyReportConfig {
+  sheet: {
+    sheet_id: string;
+    gid: string;
+    url: string;
+    embed_url: string;
+  };
+  manager: {
+    manager_name: string;
+    manager_email: string;
+    updated_at?: string;
+  };
+}
+
+export interface NaverReportSchedule {
+  schedule_id: number;
+  enabled: boolean;
+  days_of_week: number[];
+  send_time: string;
+  timezone: string;
+  recipient_emails: string[];
+  include_work_ids: number[];
+  last_sent_at: string | null;
+  next_run_at: string | null;
+  rights_holder_id: number;
+  rights_holder_name: string;
+  manager_name?: string | null;
+  email?: string | null;
+  metabase_embed_url?: string | null;
+}
+
+export interface NaverReportWork {
+  work_id: number;
+  work_title: string;
+  identifier: string | null;
+  naver_report_enabled: boolean;
+  rights_holder_id: number;
+  rights_holder_name: string;
+  manager_name?: string | null;
+  email?: string | null;
+  metabase_embed_url?: string | null;
+}
+
+export interface NaverReportDeliveryLog {
+  id: number;
+  run_id: string | null;
+  execution_mode: string | null;
+  send_notifications: boolean | null;
+  status: string | null;
+  result_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface NaverReportSchedulesResponse {
+  schedules: NaverReportSchedule[];
+  works: NaverReportWork[];
+  logs: NaverReportDeliveryLog[];
+}
+
+export interface NaverReportScheduleUpdate {
+  enabled: boolean;
+  days_of_week: number[];
+  send_time: string;
+  timezone: string;
+  recipient_emails: string[];
+  include_work_ids: number[];
+}
+
 export interface NaverContentCatalogItem {
   id?: number;
   content_name: string;
@@ -112,6 +224,14 @@ export interface NaverContentCatalogItem {
   active_flag?: string;
   status?: string;
   naver_report_enabled?: boolean;
+}
+
+export interface NaverContentCatalogCreate {
+  content_name: string;
+  identifier: string;
+  rights_holder_name: string;
+  status?: string;
+  naver_report_enabled: boolean;
 }
 
 export interface NaverRightsHolder {
@@ -153,11 +273,53 @@ export interface NaverCollectResult {
   summary: NaverAnalyticsSummary;
 }
 
+export interface NaverCollectJob {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  phase: string;
+  message: string;
+  percent: number;
+  completed: number;
+  total: number;
+  row_count: number;
+  run_id?: string;
+  triggered_by?: string;
+  max_clips_per_identifier?: number;
+  created_at?: string;
+  updated_at?: string;
+  finished_at?: string;
+  error_message?: string;
+  summary?: NaverAnalyticsSummary;
+}
+
 export type B2ContentCatalogItem = NaverContentCatalogItem;
 export type B2RightsHolder = NaverRightsHolder;
 export type B2AnalyticsSummary = NaverAnalyticsSummary;
 export type B2AnalyticsOptions = NaverAnalyticsOptions;
 export type B2CollectResult = NaverCollectResult;
+
+// ── A3 Naver Clip Applicant ──────────────────────────────────────────────────
+export type A3Platform =
+  | "네이버 클립프로필(네이버 TV 포함)"
+  | "유튜브"
+  | "인스타그램"
+  | "틱톡"
+  | "카카오톡숏폼";
+
+export interface A3Applicant {
+  applicant_id: string;
+  name: string;
+  phone_number: string;
+  naver_id: string;
+  naver_clip_profile_name: string;
+  naver_clip_profile_id: string;
+  representative_channel_name: string;
+  representative_channel_platform: string;
+  channel_url: string;
+  submitted_at: string;
+}
+
+export type A3ApplicantCreate = Omit<A3Applicant, "applicant_id" | "submitted_at">;
 
 export interface ActionReceipt {
   request_id: string;

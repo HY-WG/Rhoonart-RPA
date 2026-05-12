@@ -14,9 +14,36 @@ interface WorkRequest {
   processed_at: string | null;
   drive_link: string | null;
   slack_ts: string | null;
+  decision_note?: string | null;
+  rejection_message?: string | null;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8001/dashboard";
+const RPA_BASE = API_BASE.replace(/\/dashboard$/, "").replace(/\/$/, "");
+const RPA_TOKEN = process.env.NEXT_PUBLIC_RPA_TOKEN ?? "";
+
+async function rpaRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${RPA_BASE}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(RPA_TOKEN ? { "X-RPA-Token": RPA_TOKEN } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch: ${RPA_BASE}${path} 에 연결할 수 없습니다. FastAPI 서버(8001)와 web/.env.local 설정을 확인하세요. (${(error as Error).message})`
+    );
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
 // ── 훅 ───────────────────────────────────────────────────────────────────────
 function useWorkRequests(status: string) {
@@ -25,9 +52,9 @@ function useWorkRequests(status: string) {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (status !== "all") params.set("status", status);
-      const res = await fetch(`${API_BASE}/api/admin/work-requests?${params}`);
-      if (!res.ok) throw new Error("조회 실패");
-      const data = await res.json();
+      const data = await rpaRequest<{ items?: WorkRequest[] }>(
+        `/api/admin/work-requests?${params}`
+      );
       return data.items ?? [];
     },
     staleTime: 30_000,
@@ -38,17 +65,38 @@ function useTriggerA2() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: { channel_name: string; work_title: string }) => {
-      const res = await fetch(`${API_BASE}/api/a2/trigger`, {
+      return rpaRequest<{ channel_name?: string; work_title?: string }>("/api/a2/trigger", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payload: body }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? "처리 실패");
-      }
-      return res.json();
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["work-requests"] }),
+  });
+}
+
+function useApproveWorkRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      rpaRequest(`/api/admin/work-requests/${encodeURIComponent(requestId)}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ decided_by: "admin" }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["work-requests"] }),
+  });
+}
+
+function useRejectWorkRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      rpaRequest<{ message?: string }>(
+        `/api/admin/work-requests/${encodeURIComponent(requestId)}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify({ decided_by: "admin" }),
+        }
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["work-requests"] }),
   });
 }
@@ -78,8 +126,8 @@ function ManualTriggerPanel() {
       });
       setChannelName("");
       setWorkTitle("");
-    } catch (e: any) {
-      setResult({ ok: false, msg: e.message });
+    } catch (error) {
+      setResult({ ok: false, msg: (error as Error).message });
     }
   };
 
@@ -127,7 +175,10 @@ function ManualTriggerPanel() {
 // ── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function WorkApplicationPage() {
   const [statusFilter, setStatusFilter] = useState("all");
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const { data: requests = [], isLoading, error } = useWorkRequests(statusFilter);
+  const approve = useApproveWorkRequest();
+  const reject = useRejectWorkRequest();
 
   const TABS = [
     { key: "all", label: "전체" },
@@ -176,25 +227,26 @@ export default function WorkApplicationPage() {
               <th className="px-5 py-3.5 text-left text-xs text-gray-500 font-semibold uppercase">상태</th>
               <th className="px-5 py-3.5 text-left text-xs text-gray-500 font-semibold uppercase">신청일</th>
               <th className="px-5 py-3.5 text-left text-xs text-gray-500 font-semibold uppercase">처리일</th>
-              <th className="px-5 py-3.5 text-right text-xs text-gray-500 font-semibold uppercase">파일</th>
+              <th className="px-5 py-3.5 text-left text-xs text-gray-500 font-semibold uppercase">안내</th>
+              <th className="px-5 py-3.5 text-right text-xs text-gray-500 font-semibold uppercase">액션</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-sm text-gray-400">불러오는 중…</td>
+                <td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-400">불러오는 중…</td>
               </tr>
             )}
             {!isLoading && error && (
               <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-sm text-red-400">
+                <td colSpan={7} className="px-5 py-12 text-center text-sm text-red-400">
                   오류: {(error as Error).message}
                 </td>
               </tr>
             )}
             {!isLoading && !error && requests.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-sm text-gray-400">
+                <td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-400">
                   신청 내역이 없습니다.
                 </td>
               </tr>
@@ -219,15 +271,46 @@ export default function WorkApplicationPage() {
                   <td className="px-5 py-4 text-sm text-gray-500">
                     {req.processed_at ? req.processed_at.slice(0, 10) : "-"}
                   </td>
+                  <td className="px-5 py-4 text-xs text-gray-500">
+                    {req.rejection_message ?? req.decision_note ?? "-"}
+                  </td>
                   <td className="px-5 py-4 text-right">
-                    {req.drive_link ? (
-                      <a
-                        href={req.drive_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-teal-600 hover:underline"
-                      >
-                        열기 →
+                    {req.status === "pending" ? (
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={async () => {
+                            setResult(null);
+                            try {
+                              await approve.mutateAsync(req.id);
+                              setResult({ ok: true, msg: "승인 처리 및 메일 발송 요청 완료" });
+                            } catch (err) {
+                              setResult({ ok: false, msg: (err as Error).message });
+                            }
+                          }}
+                          disabled={approve.isPending || reject.isPending}
+                          className="rounded-lg bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-600 disabled:opacity-50"
+                        >
+                          허용
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setResult(null);
+                            try {
+                              const response = await reject.mutateAsync(req.id);
+                              setResult({ ok: true, msg: response.message ?? "거절 처리 완료" });
+                            } catch (err) {
+                              setResult({ ok: false, msg: (err as Error).message });
+                            }
+                          }}
+                          disabled={approve.isPending || reject.isPending}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          거절
+                        </button>
+                      </div>
+                    ) : req.drive_link ? (
+                      <a href={req.drive_link} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:underline">
+                        파일 열기
                       </a>
                     ) : (
                       <span className="text-xs text-gray-300">-</span>
@@ -239,6 +322,11 @@ export default function WorkApplicationPage() {
           </tbody>
         </table>
       </div>
+      {result && (
+        <div className={`fixed bottom-6 right-6 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-lg ${result.ok ? "bg-gray-900" : "bg-red-500"}`}>
+          {result.msg}
+        </div>
+      )}
     </div>
   );
 }

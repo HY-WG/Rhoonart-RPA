@@ -9,6 +9,7 @@ from typing import Optional
 
 import gspread
 import pytz
+from gspread.exceptions import WorksheetNotFound
 
 from ..utils.datetime_utils import parse_form_timestamp
 from ..interfaces.repository import (
@@ -32,6 +33,10 @@ from ..logger import CoreLogger
 
 KST = pytz.timezone("Asia/Seoul")
 log = CoreLogger(__name__)
+
+
+def naver_settlement_tab_name(year: int, month: int) -> str:
+    return f"{year % 100:02d}.{month:02d}"
 
 
 def _rows_to_dicts(ws: gspread.Worksheet) -> list[dict]:
@@ -398,6 +403,8 @@ class SheetFormResponseRepository(INaverClipRepository):
 class SheetNaverClipApplicantRepository(INaverClipRepository):
     """Worksheet-backed repository for A-3 homepage submissions."""
 
+    HEADER_ROW_INDEX = 5
+    INSERT_ROW_INDEX = 6
     HEADERS = [
         "applicant_id",
         "submitted_at",
@@ -411,53 +418,109 @@ class SheetNaverClipApplicantRepository(INaverClipRepository):
         "channel_url",
     ]
 
-    def __init__(self, ws: gspread.Worksheet) -> None:
+    def __init__(
+        self,
+        ws: gspread.Worksheet,
+        spreadsheet: gspread.Spreadsheet | None = None,
+    ) -> None:
         self._ws = ws
+        self._spreadsheet = spreadsheet
         self._ensure_header()
 
     def create_applicant(self, applicant: NaverClipApplicant) -> NaverClipApplicant:
-        self._ws.append_row(
-            [
-                applicant.applicant_id,
-                applicant.submitted_at.isoformat(),
-                applicant.name,
-                applicant.phone_number,
-                applicant.naver_id,
-                applicant.naver_clip_profile_name,
-                applicant.naver_clip_profile_id,
-                applicant.representative_channel_name,
-                applicant.representative_channel_platform.value,
-                applicant.channel_url,
-            ]
+        headers = self._header_values()
+        row = self._build_insert_row(applicant, headers)
+        insert_row_index = self._insert_row_index()
+        self._ws.insert_row(
+            row,
+            index=insert_row_index,
+            value_input_option="USER_ENTERED",
         )
+        self._refresh_month_highlight(applicant.submitted_at, headers)
         return applicant
 
     def list_applicants(self) -> list[NaverClipApplicant]:
-        rows = _rows_to_dicts(self._ws)
+        rows = self._applicant_rows()
         applicants: list[NaverClipApplicant] = []
         for row in rows:
-            submitted_at_raw = str(row.get("submitted_at", "")).strip()
+            submitted_at_raw = str(
+                row.get("submitted_at")
+                or row.get("가입신청 일자")
+                or row.get("활동시작월")
+                or ""
+            ).strip()
             if not submitted_at_raw:
                 continue
             applicants.append(
                 NaverClipApplicant(
-                    applicant_id=str(row.get("applicant_id", "")).strip(),
-                    submitted_at=parse_form_timestamp(submitted_at_raw),
-                    name=str(row.get("name", "")).strip(),
-                    phone_number=str(row.get("phone_number", "")).strip(),
-                    naver_id=str(row.get("naver_id", "")).strip(),
-                    naver_clip_profile_name=str(row.get("naver_clip_profile_name", "")).strip(),
-                    naver_clip_profile_id=str(row.get("naver_clip_profile_id", "")).strip(),
-                    representative_channel_name=str(row.get("representative_channel_name", "")).strip(),
-                    representative_channel_platform=RepresentativeChannelPlatform(
-                        str(row.get("representative_channel_platform", "")).strip()
+                    applicant_id=str(row.get("applicant_id") or row.get("신청 ID") or "").strip(),
+                    submitted_at=self._parse_applicant_timestamp(submitted_at_raw),
+                    name=str(row.get("name") or row.get("이름") or "").strip(),
+                    phone_number=str(
+                        row.get("phone_number") or row.get("전화번호") or row.get("휴대폰번호") or ""
+                    ).strip(),
+                    naver_id=str(row.get("naver_id") or row.get("네이버ID") or row.get("네이버 ID") or "").strip(),
+                    naver_clip_profile_name=str(
+                        row.get("naver_clip_profile_name")
+                        or row.get("네이버 클립 프로필명")
+                        or row.get("클립 프로필명")
+                        or ""
+                    ).strip(),
+                    naver_clip_profile_id=str(
+                        row.get("naver_clip_profile_id")
+                        or row.get("네이버 클립 프로필 ID")
+                        or row.get("클립 프로필 ID")
+                        or ""
+                    ).strip(),
+                    representative_channel_name=str(
+                        row.get("representative_channel_name")
+                        or row.get("대표 채널명")
+                        or row.get("채널명")
+                        or row.get("크리에이터명")
+                        or ""
+                    ).strip(),
+                    representative_channel_platform=self._parse_platform(
+                        str(
+                            row.get("representative_channel_platform")
+                            or row.get("대표 채널 플랫폼")
+                            or row.get("카테고리")
+                            or RepresentativeChannelPlatform.YOUTUBE.value
+                        ).strip()
                     ),
-                    channel_url=str(row.get("channel_url", "")).strip(),
+                    channel_url=str(
+                        row.get("channel_url")
+                        or row.get("채널 URL")
+                        or row.get("채널 링크")
+                        or row.get("메인플랫폼URL")
+                        or ""
+                    ).strip(),
                 )
             )
         return applicants
 
+    def _parse_platform(self, value: str) -> RepresentativeChannelPlatform:
+        try:
+            return RepresentativeChannelPlatform(value)
+        except ValueError:
+            return RepresentativeChannelPlatform.YOUTUBE
+
+    def _parse_applicant_timestamp(self, value: str) -> datetime:
+        try:
+            return parse_form_timestamp(value)
+        except ValueError:
+            compact = value.replace(" ", "")
+            if compact.endswith("일") and "월" in compact:
+                month_text, day_text = compact[:-1].split("월", 1)
+                if month_text.isdigit() and day_text.isdigit():
+                    now = datetime.now(KST)
+                    return datetime(now.year, int(month_text), int(day_text))
+            raise
+
     def get_applicants_by_month(self, year: int, month: int) -> list[NaverClipApplicant]:
+        if self._spreadsheet is not None:
+            worksheet = self._month_worksheet(year, month)
+            monthly_repo = SheetNaverClipApplicantRepository(worksheet)
+            return monthly_repo.list_applicants()
         return [
             applicant
             for applicant in self.list_applicants()
@@ -465,5 +528,232 @@ class SheetNaverClipApplicantRepository(INaverClipRepository):
         ]
 
     def _ensure_header(self) -> None:
+        if self._header_values():
+            return
         if not self._ws.row_values(1):
             self._ws.append_row(self.HEADERS)
+
+    def _header_values(self) -> list[str]:
+        intake_header_row = self._ws.row_values(3)
+        if {"크리에이터명", "클립 ID", "네이버 NID"}.issubset(
+            {str(value).strip() for value in intake_header_row}
+        ):
+            return intake_header_row
+        header_row = self._ws.row_values(self.HEADER_ROW_INDEX)
+        if any(str(value).strip() for value in header_row):
+            return header_row
+        return self._ws.row_values(1)
+
+    def _insert_row_index(self) -> int:
+        intake_header_row = self._ws.row_values(3)
+        if {"크리에이터명", "클립 ID", "네이버 NID"}.issubset(
+            {str(value).strip() for value in intake_header_row}
+        ):
+            return 4
+        return self.INSERT_ROW_INDEX
+
+    def _data_start_row_index(self) -> int:
+        intake_header_row = self._ws.row_values(3)
+        if {"크리에이터명", "클립 ID", "네이버 NID"}.issubset(
+            {str(value).strip() for value in intake_header_row}
+        ):
+            return 4
+        header_row = self._ws.row_values(self.HEADER_ROW_INDEX)
+        if any(str(value).strip() for value in header_row):
+            return self.HEADER_ROW_INDEX + 1
+        return 2
+
+    def _applicant_rows(self) -> list[dict]:
+        intake_header_row = self._ws.row_values(3)
+        if {"크리에이터명", "클립 ID", "네이버 NID"}.issubset(
+            {str(value).strip() for value in intake_header_row}
+        ):
+            headers = [str(header).strip() for header in intake_header_row]
+            values = self._ws.get_all_values()[3:]
+            return [
+                {
+                    header: row[index] if index < len(row) else ""
+                    for index, header in enumerate(headers)
+                    if header
+                }
+                for row in values
+                if any(str(cell).strip() for cell in row)
+            ]
+        header_row = self._ws.row_values(self.HEADER_ROW_INDEX)
+        if any(str(value).strip() for value in header_row):
+            headers = [str(header).strip() for header in header_row]
+            values = self._ws.get_all_values()[self.HEADER_ROW_INDEX :]
+            return [
+                {
+                    header: row[index] if index < len(row) else ""
+                    for index, header in enumerate(headers)
+                    if header
+                }
+                for row in values
+                if any(str(cell).strip() for cell in row)
+            ]
+        return _rows_to_dicts(self._ws)
+
+    def _build_insert_row(
+        self,
+        applicant: NaverClipApplicant,
+        headers: list[str],
+    ) -> list[str]:
+        values_by_header = {
+            "applicant_id": applicant.applicant_id,
+            "submitted_at": applicant.submitted_at.isoformat(),
+            "name": applicant.name,
+            "phone_number": applicant.phone_number,
+            "naver_id": applicant.naver_id,
+            "naver_clip_profile_name": applicant.naver_clip_profile_name,
+            "naver_clip_profile_id": applicant.naver_clip_profile_id,
+            "representative_channel_name": applicant.representative_channel_name,
+            "representative_channel_platform": applicant.representative_channel_platform.value,
+            "channel_url": applicant.channel_url,
+            "신청 ID": applicant.applicant_id,
+            "신청일시": applicant.submitted_at.isoformat(),
+            "신청일": applicant.submitted_at.isoformat(),
+            "가입신청 일자": applicant.submitted_at.strftime("%Y-%m-%d"),
+            "이름": applicant.name,
+            "전화번호": applicant.phone_number,
+            "네이버 ID": applicant.naver_id,
+            "네이버ID": applicant.naver_id,
+            "네이버 클립 프로필명": applicant.naver_clip_profile_name,
+            "클립 프로필명": applicant.naver_clip_profile_name,
+            "네이버 클립 프로필 ID": applicant.naver_clip_profile_id,
+            "클립 프로필 ID": applicant.naver_clip_profile_id,
+            "대표 채널명": applicant.representative_channel_name,
+            "채널명": applicant.representative_channel_name,
+            "대표 채널 플랫폼": applicant.representative_channel_platform.value,
+            "채널 URL": applicant.channel_url,
+            "채널 링크": applicant.channel_url,
+            "활동시작월": f"{applicant.submitted_at.month}월 1일"
+            if hasattr(applicant.submitted_at, "month")
+            else "",
+            "크리에이터명": applicant.naver_clip_profile_name or applicant.representative_channel_name,
+            "클립 ID": applicant.naver_clip_profile_id,
+            "클립프로필 URL": applicant.naver_clip_profile_id,
+            "카테고리": applicant.representative_channel_platform.value,
+            "휴대폰번호": applicant.phone_number,
+            "이메일": "",
+            "네이버 NID": applicant.naver_id,
+            "소속": "루나르트",
+            "메인플랫폼URL": applicant.channel_url,
+            "연동채널 URL (네이버TV 등 있을 경우에만)": "",
+        }
+        return [str(values_by_header.get(header.strip(), "")) for header in headers]
+
+    def _refresh_month_highlight(self, highlighted_at: datetime, headers: list[str]) -> None:
+        if not headers:
+            return
+        end_col = chr(ord("A") + min(len(headers), 26) - 1)
+        values = self._ws.get_all_values()
+        data_start_row = self._data_start_row_index()
+        month_header_index = self._month_header_index(headers)
+        if month_header_index is None:
+            row_count = max(len(values), data_start_row)
+            self._format_row_range(data_start_row, row_count, end_col, self._white_background())
+            self._format_row_range(data_start_row, data_start_row, end_col, self._green_background())
+            return
+
+        current_month_rows: list[int] = []
+        previous_month_rows: list[int] = []
+        for row_number, row in enumerate(values[data_start_row - 1 :], start=data_start_row):
+            if not any(str(cell).strip() for cell in row):
+                continue
+            raw_month = row[month_header_index] if month_header_index < len(row) else ""
+            try:
+                row_date = self._parse_applicant_timestamp(str(raw_month).strip())
+            except ValueError:
+                previous_month_rows.append(row_number)
+                continue
+            if row_date.year == highlighted_at.year and row_date.month == highlighted_at.month:
+                current_month_rows.append(row_number)
+            else:
+                previous_month_rows.append(row_number)
+
+        for start, end in self._group_consecutive_rows(previous_month_rows):
+            self._format_row_range(start, end, end_col, self._white_background())
+        for start, end in self._group_consecutive_rows(current_month_rows):
+            self._format_row_range(start, end, end_col, self._green_background())
+
+    def _month_header_index(self, headers: list[str]) -> int | None:
+        candidates = {
+            "submitted_at",
+            "가입신청 일자",
+            "신청일시",
+            "신청일",
+            "활동시작월",
+        }
+        for index, header in enumerate(headers):
+            if header.strip() in candidates:
+                return index
+        return None
+
+    def _format_row_range(
+        self,
+        start_row: int,
+        end_row: int,
+        end_col: str,
+        background_color: dict[str, float],
+    ) -> None:
+        if end_row < start_row:
+            return
+        self._ws.format(
+            f"A{start_row}:{end_col}{end_row}",
+            {"backgroundColor": background_color},
+        )
+
+    def _group_consecutive_rows(self, rows: list[int]) -> list[tuple[int, int]]:
+        if not rows:
+            return []
+        rows = sorted(rows)
+        ranges: list[tuple[int, int]] = []
+        start = previous = rows[0]
+        for row in rows[1:]:
+            if row == previous + 1:
+                previous = row
+                continue
+            ranges.append((start, previous))
+            start = previous = row
+        ranges.append((start, previous))
+        return ranges
+
+    def _green_background(self) -> dict[str, float]:
+        return {
+            "red": 0.91,
+            "green": 0.97,
+            "blue": 0.94,
+        }
+
+    def _white_background(self) -> dict[str, float]:
+        return {
+            "red": 1.0,
+            "green": 1.0,
+            "blue": 1.0,
+        }
+
+    def _month_worksheet(self, year: int, month: int) -> gspread.Worksheet:
+        if self._spreadsheet is None:
+            return self._ws
+        tab_name = naver_settlement_tab_name(year, month)
+        try:
+            worksheet = self._spreadsheet.worksheet(tab_name)
+        except WorksheetNotFound:
+            worksheet = self._spreadsheet.add_worksheet(
+                title=tab_name,
+                rows=1000,
+                cols=len(self.HEADERS),
+            )
+        if not worksheet.row_values(1):
+            worksheet.update("A1:J1", [self.HEADERS])
+        return worksheet
+
+    def month_sheet_url(self, year: int, month: int) -> str:
+        worksheet = self._month_worksheet(year, month)
+        return (
+            f"https://docs.google.com/spreadsheets/d/{self._spreadsheet.id}/edit"
+            f"#gid={worksheet.id}"
+            if self._spreadsheet is not None
+            else ""
+        )

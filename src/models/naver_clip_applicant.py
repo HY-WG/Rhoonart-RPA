@@ -15,7 +15,7 @@ class RepresentativeChannelPlatform(str, Enum):
     YOUTUBE = "유튜브"
     INSTAGRAM = "인스타그램"
     TIKTOK = "틱톡"
-    KAKAO_SHORTFORM = "카카오톡숏폼"
+    KAKAO_SHORTFORM = "카카오 숏폼"
 
 
 @dataclass

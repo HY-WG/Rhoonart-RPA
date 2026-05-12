@@ -165,6 +165,7 @@ class HttpAdminAPIClient(AdminAPIClient):
             "platforms":           work.platforms,
             "platform_video_url":  work.platform_video_url,
             "trailer_url":         work.trailer_url,
+            "thumbnail_url":       work.thumbnail_url,
             "source_download_url": work.source_download_url,
         }
         try:

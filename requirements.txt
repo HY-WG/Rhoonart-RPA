@@ -25,6 +25,7 @@ pytz==2024.1
 # Backoffice API
 fastapi==0.115.12
 httpx==0.28.1
+python-multipart==0.0.20
 
 # Test
 pytest==8.3.5
@@ -36,3 +37,12 @@ notion-client==2.2.1
 anthropic>=0.40.0
 
 supabase==2.4.0
+
+# HTML 스크래핑 (네이버 영화 등)
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# 인코딩 파이프라인
+watchdog==4.0.1
+psutil==5.9.8
+google-auth-oauthlib==1.2.0

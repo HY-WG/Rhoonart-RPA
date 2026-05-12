@@ -1,0 +1,17 @@
+{
+  "id": 1,
+  "work_title": "테스트작품",
+  "rights_holder_id": 1,
+  "release_year": 2024,
+  "description": "테스트 작품 설명",
+  "director": "홍길동",
+  "cast": "테스트배우",
+  "genre": "드라마",
+  "video_type": "드라마",
+  "country": "한국",
+  "platform": "youtube",
+  "platforms": ["youtube"],
+  "active_flag": "Active",
+  "created_at": "2026-01-01T00:00:00+09:00",
+  "updated_at": "2026-05-01T00:00:00+09:00"
+}

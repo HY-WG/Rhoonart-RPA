@@ -8,10 +8,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+import requests
 
 KST = timezone(timedelta(hours=9))
 
@@ -27,6 +30,8 @@ AUTO_TITLE_SEED_QUERIES = [
     "드라마 명장면",
     "한국 드라마 클립",
 ]
+_TMDB_API_BASE = "https://api.themoviedb.org/3"
+_KOBIS_API_BASE = "https://www.kobis.or.kr/kobisopenapi/webservice/rest"
 
 # ── 드라마명 추출 정규식 ──────────────────────────────────────────────────
 # 방송사/플랫폼 prefix 제거
@@ -65,6 +70,10 @@ _HASHTAG_STOPWORDS = {
     "넷플릭스", "왓챠", "티빙", "웨이브", "유튜브", "드라마쇼츠", "드라마명장면",
     "드라마클립", "영화클립", "공포", "스릴러", "로맨스", "로맨틱", "사이다",
     "레전드", "highlight", "drama", "shorts", "fyp", "viral", "추천",
+}
+_TITLE_SOURCE_STOPWORDS = {
+    "예고편", "티저", "메이킹", "비하인드", "하이라이트", "명장면", "클립",
+    "리뷰", "해설", "결말", "스포", "모음", "ost", "mv", "shorts",
 }
 
 
@@ -108,6 +117,142 @@ def extract_drama_name_with_episode(video_title: str) -> Optional[str]:
     return None
 
 
+# ── 기준 데이터 기반 자동 제목 수집 ───────────────────────────────────────
+
+def collect_reference_titles(max_titles: int = MAX_DRAMA_TITLES) -> list[str]:
+    """TMDB/KOBIS 기준 데이터에서 최신·인기 드라마/영화 제목을 수집한다.
+
+    우선순위:
+      1. TMDB TV trending/week, on_the_air, discover TV
+      2. TMDB movie trending/week, now_playing, discover movie
+      3. KOBIS 최근 7일 일별 박스오피스
+
+    API 키가 없는 소스는 조용히 건너뛴다.
+    """
+    tmdb_titles = _dedupe_titles(_collect_tmdb_titles(), max_titles=max_titles)
+    kobis_titles = _dedupe_titles(_collect_kobis_titles(), max_titles=8)
+    return _dedupe_titles(
+        tmdb_titles[:12] + kobis_titles + tmdb_titles[12:],
+        max_titles=max_titles,
+    )
+
+
+def _collect_tmdb_titles() -> list[str]:
+    api_key = os.environ.get("TMDB_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    six_months_ago = (datetime.now(KST) - timedelta(days=TITLE_SEARCH_MONTHS * 30)).date().isoformat()
+    requests_to_make = [
+        ("tv", "trending/tv/week", {}),
+        ("tv", "tv/on_the_air", {"region": "KR"}),
+        ("tv", "discover/tv", {
+            "watch_region": "KR",
+            "with_origin_country": "KR",
+            "with_genres": "18",
+            "with_watch_monetization_types": "flatrate",
+            "sort_by": "popularity.desc",
+            "first_air_date.gte": six_months_ago,
+        }),
+        ("movie", "trending/movie/week", {}),
+        ("movie", "movie/now_playing", {"region": "KR"}),
+        ("movie", "discover/movie", {
+            "region": "KR",
+            "with_original_language": "ko",
+            "sort_by": "popularity.desc",
+            "primary_release_date.gte": six_months_ago,
+        }),
+    ]
+
+    titles: list[str] = []
+    for media_type, endpoint, extra in requests_to_make:
+        payload = _request_json(
+            f"{_TMDB_API_BASE}/{endpoint}",
+            {
+                "api_key": api_key,
+                "language": "ko-KR",
+                "page": 1,
+                **extra,
+            },
+        )
+        for item in payload.get("results", []):
+            if not _is_korean_tmdb_item(item, media_type):
+                continue
+            titles.extend([
+                str(item.get("name") or ""),
+                str(item.get("title") or ""),
+            ])
+    return titles
+
+
+def _is_korean_tmdb_item(item: dict, media_type: str) -> bool:
+    original_language = str(item.get("original_language") or "").lower()
+    if original_language == "ko":
+        if media_type == "tv":
+            return 18 in (item.get("genre_ids") or [])
+        return True
+    if media_type == "tv":
+        origin_country = item.get("origin_country") or []
+        return "KR" in origin_country and 18 in (item.get("genre_ids") or [])
+    return False
+
+
+def _collect_kobis_titles() -> list[str]:
+    api_key = os.environ.get("KOBIS_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    titles: list[str] = []
+    today = datetime.now(KST).date()
+    for days_ago in range(1, 8):
+        target_dt = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
+        payload = _request_json(
+            f"{_KOBIS_API_BASE}/boxoffice/searchDailyBoxOfficeList.json",
+            {"key": api_key, "targetDt": target_dt, "repNationCd": "K"},
+        )
+        boxoffice = payload.get("boxOfficeResult", {}).get("dailyBoxOfficeList", [])
+        titles.extend(str(item.get("movieNm") or "") for item in boxoffice)
+    return titles
+
+
+def _request_json(url: str, params: dict) -> dict:
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return {}
+
+
+def _dedupe_titles(titles: list[str], *, max_titles: int) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in titles:
+        title = _normalize_reference_title(raw)
+        if not title or title in seen:
+            continue
+        seen.add(title)
+        result.append(title)
+        if len(result) >= max_titles:
+            break
+    return result
+
+
+def _normalize_reference_title(raw: str) -> str:
+    title = re.sub(r"\s+", " ", raw or "").strip(" \t\r\n-:|·")
+    title = re.sub(r"\s*\([^)]*\)\s*$", "", title).strip()
+    if not title:
+        return ""
+    lowered = title.lower().replace(" ", "")
+    if any(word in lowered for word in _TITLE_SOURCE_STOPWORDS):
+        return ""
+    if not re.search(r"[가-힣]{2,}", title):
+        return ""
+    if len(title) < 2 or len(title) > 30:
+        return ""
+    return title
+
+
 # ── 파일 I/O ─────────────────────────────────────────────────────────────
 
 def load_drama_titles_file() -> dict:
@@ -127,7 +272,7 @@ def save_drama_titles_file(manual_titles: list[str], auto_titles: list[str]) -> 
                 "updated_at": datetime.now(KST).isoformat(),
                 "_comment": {
                     "manual_titles": "담당자가 직접 관리. 최근 6개월 방영·인기 드라마/영화 제목 입력.",
-                    "auto_titles": "드라마 클립 영상 hashtag·에피소드마커 자동 추출 (7일 캐시).",
+                    "auto_titles": "TMDB/KOBIS 기준 데이터에서 수집한 최신·인기 드라마/영화 제목 (7일 캐시).",
                     "updated_at": "auto_titles 마지막 갱신 시각.",
                 },
             },
