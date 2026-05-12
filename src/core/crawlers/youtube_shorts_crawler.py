@@ -132,6 +132,12 @@ _BROADCASTER_EXCLUDE = {
     "스튜디오드래곤",
 }
 
+# ── Layer C: 시드 채널 기반 키워드 자동 생성 탐색 ────────────────────────────
+_LAYER_C_MAX_KEYWORDS   = 10      # 최대 검색 키워드 수 (100유닛/개 → 최대 1,000유닛)
+_LAYER_C_MAX_SEED_FETCH = 50      # 메타데이터 수집 시드 상한 (50개 = 1 channels.list 배치)
+_LAYER_C_MIN_KW_LEN     = 4       # 최소 키워드 길이 (단독 단어 노이즈 제거)
+_LAYER_C_QUOTA_BUDGET   = 1_000   # Step C-3 쿼터 상한 (유닛)
+
 # YouTube topicId — Freebase MID (채널 topicId 조회에만 사용, 탐색에는 미사용)
 _TARGET_TOPIC_IDS = {
     "/m/02jjt",   # Entertainment
@@ -266,6 +272,12 @@ class YouTubeShortsCrawler:
                     if len(candidate_ids) >= self._max_ch:
                         break
             log.info("[Layer B] 완료 — %d개 후보", len(candidate_ids))
+
+        # ── Layer C: 시드 채널 기반 키워드 자동 생성 탐색 ─────────────────
+        if len(candidate_ids) < self._max_ch:
+            log.info("[Layer C] 시드 채널 기반 키워드 자동 생성 탐색")
+            self._run_layer_c(seed_ids, candidate_ids)
+            log.info("[Layer C] 완료 — %d개 후보", len(candidate_ids))
 
         # 시드 + 블록리스트 제외
         candidate_ids -= set(seed_ids)
@@ -503,6 +515,185 @@ class YouTubeShortsCrawler:
             params["publishedAfter"] = published_after
         data = self._yt_get("search", params, cost=100)
         return _extract_channel_ids(data)
+
+    # ── Layer C: 시드 채널 기반 키워드 자동 생성 탐색 ────────────────────────
+
+    def _fetch_seed_metadata(self, seed_ids: list[str]) -> dict[str, dict]:
+        """시드 채널의 채널명·설명·brandingSettings.keywords 수집.
+
+        최대 _LAYER_C_MAX_SEED_FETCH(50)개만 처리하여 비용을 1유닛으로 고정한다.
+        결정론적 샘플링을 위해 channel_id 해시 기준 정렬 후 슬라이싱한다.
+        """
+        import shlex as _shlex
+
+        targets = sorted(seed_ids, key=lambda cid: hash(cid))[:_LAYER_C_MAX_SEED_FETCH]
+        result: dict[str, dict] = {}
+
+        for batch in _chunks(targets, 50):
+            data = self._yt_get("channels", {
+                "part": "snippet,brandingSettings",
+                "id": ",".join(batch),
+                "maxResults": 50,
+            }, cost=1)
+            for item in data.get("items", []):
+                cid = item["id"]
+                snippet = item.get("snippet", {})
+                branding = item.get("brandingSettings", {}).get("channel", {})
+                raw_kw = branding.get("keywords", "") or ""
+                try:
+                    kw_list = _shlex.split(raw_kw)
+                except Exception:
+                    kw_list = raw_kw.split()
+                result[cid] = {
+                    "name":        snippet.get("title", ""),
+                    "description": snippet.get("description", ""),
+                    "keywords":    kw_list,
+                }
+
+        log.info("[Layer C] 시드 메타데이터 수집 완료: %d채널", len(result))
+        return result
+
+    def _extract_layer_c_keywords(self, seed_meta_map: dict[str, dict]) -> list[str]:
+        """시드 채널 메타데이터에서 탐색 키워드 추출·필터링.
+
+        소스 우선순위 (가중치):
+          A. 채널명 파싱          (weight=3) — 정밀도 높음
+          B. brandingSettings    (weight=2) — 운영자 의도 태그
+          C. description 해시태그 (weight=1) — 노이즈 많음, 제한적 사용
+
+        필터 순서:
+          1. 길이 < _LAYER_C_MIN_KW_LEN 제거
+          2. Layer A 고정 키워드와 완전 일치 제거
+          3. _CLIP_CHANNEL_INCLUDE 원소 미포함 제거 (관련성)
+          4. _BROADCASTER_EXCLUDE 원소 포함 제거 (공식 채널 수렴 방지)
+          5. 포함 관계 제거 (짧은 쪽 제거, 긴 복합어 우선)
+          6. 빈도 × 가중치 점수 정렬 후 상위 _LAYER_C_MAX_KEYWORDS개 반환
+        """
+        import re as _re
+
+        freq:          dict[str, int] = {}
+        source_weight: dict[str, int] = {}
+
+        for meta in seed_meta_map.values():
+            name:        str       = meta.get("name", "")
+            description: str       = meta.get("description", "")
+            kw_list:     list[str] = meta.get("keywords", [])
+
+            candidates: list[tuple[str, int]] = []
+
+            # ── 소스 A: 채널명 파싱 ─────────────────────────────────────
+            tokens = [t for t in _re.split(r"[\s\-_/·|,]+", name) if t]
+            for t in tokens:
+                candidates.append((t, 3))
+            for i in range(len(tokens) - 1):
+                candidates.append((f"{tokens[i]} {tokens[i + 1]}", 3))
+            if name.strip():
+                candidates.append((name.strip(), 3))
+
+            # ── 소스 B: brandingSettings.keywords ───────────────────────
+            for kw in kw_list:
+                kw = kw.strip()
+                if kw:
+                    candidates.append((kw, 2))
+
+            # ── 소스 C: description 해시태그 (최대 10개) ─────────────────
+            for tag in _re.findall(r"#([\w가-힣]+)", description)[:10]:
+                candidates.append((tag, 1))
+
+            for kw, w in candidates:
+                key = kw.lower()
+                freq[key]          = freq.get(key, 0) + 1
+                source_weight[key] = max(source_weight.get(key, 0), w)
+
+        # ── 필터 1: 길이 ─────────────────────────────────────────────────
+        pool = {k for k in freq if len(k) >= _LAYER_C_MIN_KW_LEN}
+
+        # ── 필터 2: Layer A 중복 제거 ────────────────────────────────────
+        layer_a_lower = {kw.lower() for kw in _CHANNEL_SEARCH_KEYWORDS}
+        pool -= layer_a_lower
+
+        # ── 필터 3: 관련성 — _CLIP_CHANNEL_INCLUDE 원소 포함 ─────────────
+        pool = {k for k in pool if any(inc in k for inc in _CLIP_CHANNEL_INCLUDE)}
+
+        # ── 필터 4: 방송사 키워드 제거 ──────────────────────────────────
+        pool = {k for k in pool if not any(bc in k for bc in _BROADCASTER_EXCLUDE)}
+
+        # ── 필터 5: 포함 관계 제거 (긴 복합어 우선) ──────────────────────
+        keys = sorted(pool, key=len, reverse=True)
+        deduped: list[str] = []
+        for kw in keys:
+            if not any(kw != longer and kw in longer for longer in deduped):
+                deduped.append(kw)
+
+        # ── 필터 6: 빈도 × 가중치 정렬 후 상위 N개 ──────────────────────
+        scored = sorted(
+            deduped,
+            key=lambda k: freq.get(k, 1) * source_weight.get(k, 1),
+            reverse=True,
+        )
+        result = scored[:_LAYER_C_MAX_KEYWORDS]
+        log.info("[Layer C] 추출 키워드 %d개: %s", len(result), result)
+        return result
+
+    def _run_layer_c(self, seed_ids: list[str], candidate_ids: set[str]) -> None:
+        """Layer C 탐색 실행 — candidate_ids를 in-place로 업데이트.
+
+        흐름:
+          _fetch_seed_metadata → _extract_layer_c_keywords
+          → _search_channels_by_name 루프 → candidate_ids 병합
+        """
+        if not seed_ids:
+            log.info("[Layer C] 시드 채널 없음 — 건너뜀")
+            return
+
+        seed_meta = self._fetch_seed_metadata(seed_ids)
+        if not seed_meta:
+            log.warning("[Layer C] 시드 메타데이터 수집 실패 — 건너뜀")
+            return
+
+        self._debug(
+            "layer_c_seed_meta",
+            f"시드 채널 {len(seed_meta)}개 메타데이터 수집 완료",
+            seed_count=len(seed_meta),
+        )
+
+        keywords = self._extract_layer_c_keywords(seed_meta)
+        if not keywords:
+            log.info("[Layer C] 유효 키워드 없음 — 건너뜀")
+            return
+
+        self._debug(
+            "layer_c_keywords",
+            f"Layer C 탐색 키워드 {len(keywords)}개 생성",
+            keywords=keywords,
+        )
+
+        layer_c_quota = 0
+        for keyword in keywords:
+            if len(candidate_ids) >= self._max_ch:
+                log.info("[Layer C] 후보 채널 상한 달성 — 조기 종료")
+                break
+            if layer_c_quota + 100 > _LAYER_C_QUOTA_BUDGET:
+                log.warning("[Layer C] 쿼터 예산 초과 방지 — 조기 종료")
+                break
+
+            ids    = self._search_channels_by_name(keyword)
+            before = len(candidate_ids)
+            candidate_ids.update(ids)
+            layer_c_quota += 100
+
+            log.info(
+                "  [Layer C] '%s' → +%d채널 (누계 %d)",
+                keyword, len(candidate_ids) - before, len(candidate_ids),
+            )
+            self._debug(
+                "layer_c",
+                f"시드 키워드 '{keyword}' 채널 탐색",
+                keyword=keyword,
+                found=len(ids),
+                added=len(candidate_ids) - before,
+                total=len(candidate_ids),
+            )
 
     # ── 클립 채널 분류 필터 ───────────────────────────────────────────────
 
