@@ -152,10 +152,13 @@ export default function NaverClipReportPage() {
     );
   }, [collectJobQuery.error]);
 
+  const { refetch: refetchQuery } = query;
+  const { refetch: refetchLatestCollect } = latestCollectJobQuery;
+
   useEffect(() => {
     if (collectJob?.status === "completed") {
-      void query.refetch();
-      void latestCollectJobQuery.refetch();
+      void refetchQuery();
+      void refetchLatestCollect();
     }
     if (!latestCollectRunAt) return;
     setLastCollectRunAt((prev) => {
@@ -163,7 +166,7 @@ export default function NaverClipReportPage() {
       window.localStorage.setItem(LAST_COLLECT_RUN_AT_KEY, latestCollectRunAt);
       return latestCollectRunAt;
     });
-  }, [collectJob?.status, latestCollectRunAt, latestCollectJobQuery, query]);
+  }, [collectJob?.status, latestCollectRunAt, refetchQuery, refetchLatestCollect]);
 
   useEffect(() => {
     if (!persistedCollectRunAt) return;
