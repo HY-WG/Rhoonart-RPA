@@ -496,4 +496,4 @@ ENABLE_EXTENDED_THINKING = os.getenv("AGENT_EXTENDED_THINKING", "false") == "tru
 
 ---
 
-[^c3-dup]: 상세 분석은 [Notion — C-3 동명이작 문제](https://www.notion.so/D-2-34b4e58491f280bb823cf9e8a2f88dd1) 참고. 핵심: `work_title`만으로 식별 → 동명이작 등록 시 Stub은 동일 `work_id` 반환, 실 API는 기존 작품 가이드라인 덮어쓰기 또는 어드민 중복 노출 발생. 복합 키(`title + rights_holder + year`) 기반 중복 조회 및 사람 승인 흐름 필요.
+[^c3-dup]: 상세 분석은 [Notion — C-3 동명이작 문제](https://www.notion.so/C-3-24b4e58491f282549f9f81d4b390dff9?source=copy_link) 참고. 핵심: `work_title`만으로 식별 → 동명이작 등록 시 Stub은 동일 `work_id` 반환, 실 API는 기존 작품 가이드라인 덮어쓰기 또는 어드민 중복 노출 발생. 복합 키(`title + rights_holder + year`) 기반 중복 조회 및 사람 승인 흐름 필요.
