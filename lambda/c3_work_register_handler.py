@@ -107,6 +107,7 @@ def handler(event: dict, context=None) -> dict:
         platforms=event.get("platforms", []),
         platform_video_url=event.get("platform_video_url", ""),
         trailer_url=event.get("trailer_url", ""),
+        thumbnail_url=event.get("thumbnail_url", ""),
         source_download_url=event.get("source_download_url", ""),
     )
 

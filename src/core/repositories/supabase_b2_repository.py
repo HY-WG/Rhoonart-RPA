@@ -1,3 +1,5 @@
+# DEPRECATED filename — use ``supabase_naver_repository`` for new imports.
+# This file is kept for backward compatibility with ``lambda/`` and ``scripts/`` callers.
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -18,6 +20,7 @@ class SupabaseNaverRepository:
     CLIP_REPORT_RUNS_TABLE = "naver_clip_report_runs"
     CLIP_REPORT_DAILY_TABLE = "naver_clip_report_daily_rows"
     REPORT_DELIVERY_LOGS_TABLE = "naver_report_delivery_logs"
+    REPORT_SCHEDULES_TABLE = "naver_report_schedules"
     REFRESH_YEAR_RPC = "refresh_naver_clip_report_year"
 
     def __init__(
@@ -38,8 +41,19 @@ class SupabaseNaverRepository:
 
     def list_content_catalog(self, limit: int = 200) -> list[dict[str, Any]]:
         return [self._normalize_work_row(row) for row in self._get(
-            f"/{self.CONTENT_TABLE}?select=*&order=work_title.asc&limit={limit}"
+            f"/{self.CONTENT_TABLE}?select=*&order=rights_holder_name.asc,work_title.asc&limit={limit}"
         )]
+
+    def update_work_report_enabled(
+        self,
+        *,
+        work_id: int,
+        naver_report_enabled: bool,
+    ) -> dict[str, Any]:
+        return self._normalize_work_row(self._patch(
+            f"/{self.CONTENT_TABLE}?id=eq.{work_id}",
+            {"naver_report_enabled": naver_report_enabled},
+        ))
 
     def upsert_content_catalog_item(
         self,
@@ -146,6 +160,65 @@ class SupabaseNaverRepository:
         return self._patch(
             f"/{self.RIGHTS_HOLDERS_TABLE}?rights_holder_name=eq.{quote(rights_holder_name)}",
             payload,
+        )
+
+    def update_metabase_embed_url(
+        self,
+        *,
+        rights_holder_name: str,
+        metabase_embed_url: str,
+    ) -> dict[str, Any]:
+        """Persist the per-rights-holder Metabase public embed URL."""
+        return self._patch(
+            f"/{self.RIGHTS_HOLDERS_TABLE}?rights_holder_name=eq.{quote(rights_holder_name)}",
+            {"metabase_embed_url": metabase_embed_url},
+        )
+
+    def list_report_schedules(self) -> list[dict[str, Any]]:
+        return self._get(
+            "/v_naver_report_schedules?select=*&order=rights_holder_name.asc"
+        )
+
+    def list_enabled_report_works(self) -> list[dict[str, Any]]:
+        return self._get(
+            "/v_naver_enabled_report_works?select=*&order=rights_holder_name.asc,work_title.asc"
+        )
+
+    def update_report_schedule(
+        self,
+        *,
+        schedule_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._patch(
+            f"/{self.REPORT_SCHEDULES_TABLE}?id=eq.{schedule_id}",
+            {**payload, "updated_at": datetime.now(timezone.utc).isoformat()},
+        )
+
+    def mark_report_schedule_sent(self, *, schedule_id: int, sent_at: str) -> dict[str, Any]:
+        return self._patch(
+            f"/{self.REPORT_SCHEDULES_TABLE}?id=eq.{schedule_id}",
+            {
+                "last_sent_at": sent_at,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    def list_report_delivery_logs(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._get(
+            f"/{self.REPORT_DELIVERY_LOGS_TABLE}?select=*&order=created_at.desc&limit={limit}"
+        )
+
+    def create_report_delivery_log(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post(
+            f"/{self.REPORT_DELIVERY_LOGS_TABLE}",
+            {
+                "run_id": payload.get("run_id"),
+                "execution_mode": payload.get("execution_mode", "schedule"),
+                "send_notifications": payload.get("send_notifications", True),
+                "status": payload.get("status"),
+                "result_json": payload,
+            },
         )
 
     def get_content_list(self) -> list[tuple[str, str]]:
@@ -307,6 +380,15 @@ class SupabaseNaverRepository:
                 "finished_at": datetime.now(timezone.utc).isoformat(),
             },
         )
+
+    def latest_daily_report_run(self) -> dict[str, Any] | None:
+        rows = self._get(
+            f"/{self.CLIP_REPORT_RUNS_TABLE}"
+            "?select=run_id,status,checked_at,finished_at,triggered_by,row_count,error_message"
+            "&order=checked_at.desc"
+            "&limit=1"
+        )
+        return rows[0] if rows else None
 
     def insert_daily_clip_reports(
         self,

@@ -22,6 +22,7 @@ def parse_form_timestamp(ts: str) -> datetime:
         - ``"2024/04/01 오전 9:00:00"``
         - ``"2024-04-01T15:05:00"``
         - ``"2024-04-01 15:05:00"``
+        - ``"2024-04-01"``
         - ``"2024. 4. 1 오후 3:05:00"``
 
     Returns:
@@ -39,6 +40,7 @@ def parse_form_timestamp(ts: str) -> datetime:
         "%Y/%m/%d %I:%M:%S %p",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
         "%Y. %m. %d %p %I:%M:%S",
         "%Y. %m. %d %I:%M:%S %p",
     ]

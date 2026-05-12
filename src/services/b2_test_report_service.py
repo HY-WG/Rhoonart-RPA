@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
-from typing import Any
+from typing import Any, Callable
 
 import gspread
 from gspread.exceptions import WorksheetNotFound
@@ -63,7 +63,12 @@ class B2TestReportService:
         )
         return {"content": content, "rights_holder": holder}
 
-    def collect_enabled_reports(self, *, triggered_by: str = "manual") -> list[dict[str, Any]]:
+    def collect_enabled_reports(
+        self,
+        *,
+        triggered_by: str = "manual",
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> list[dict[str, Any]]:
         self._repository.ensure_daily_clip_reports_table()
         catalog = self._repository.list_enabled_content_catalog()
         holders = {
@@ -82,20 +87,60 @@ class B2TestReportService:
             if row.get("identifier")
         }
         if not contents:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "completed",
+                        "phase": "no_targets",
+                        "message": "보고 대상 작품이 없습니다.",
+                        "completed": 0,
+                        "total": 0,
+                        "percent": 100,
+                    }
+                )
             return []
 
         checked_at = datetime.now(KST).isoformat()
+        if progress_callback:
+            progress_callback(
+                {
+                    "status": "running",
+                    "phase": "creating_run",
+                    "message": f"{len(contents)}개 작품 수집 run을 생성하는 중입니다.",
+                    "completed": 0,
+                    "total": len(contents),
+                    "percent": 0,
+                }
+            )
         run = self._repository.create_daily_report_run(
             checked_at=checked_at,
             triggered_by=triggered_by,
             target_identifier_count=len(contents),
         )
         run_id = str(run["run_id"])
+
+        def _on_crawl_progress(completed: int, total: int) -> None:
+            if not progress_callback:
+                return
+            percent = int((completed / total) * 80) if total else 80
+            progress_callback(
+                {
+                    "status": "running",
+                    "phase": "crawling",
+                    "message": f"네이버 클립을 수집하는 중입니다. ({completed}/{total})",
+                    "completed": completed,
+                    "total": total,
+                    "percent": percent,
+                    "run_id": run_id,
+                }
+            )
+
         crawler = NaverClipCrawler(
             contents=contents,
             max_clips=self._max_clips_per_identifier,
             use_parallel=True,
             max_workers=4,
+            on_progress=_on_crawl_progress,
         )
         rows: list[dict[str, Any]] = []
         try:
@@ -122,14 +167,63 @@ class B2TestReportService:
                             "rights_holder_id": holder.get("id"),
                         }
                     )
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "running",
+                        "phase": "deduping",
+                        "message": "video_url 기준 중복을 제거하는 중입니다.",
+                        "completed": len(contents),
+                        "total": len(contents),
+                        "percent": 85,
+                        "run_id": run_id,
+                    }
+                )
             rows = self._dedupe_by_video_url(rows)
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "running",
+                        "phase": "saving_daily",
+                        "message": f"{len(rows)}건을 daily 테이블에 저장하는 중입니다.",
+                        "completed": len(contents),
+                        "total": len(contents),
+                        "percent": 90,
+                        "run_id": run_id,
+                    }
+                )
             self._repository.insert_daily_clip_reports(run_id=run_id, rows=rows)
             self._repository.finish_daily_report_run(
                 run_id=run_id,
                 status="success",
                 row_count=len(rows),
             )
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "running",
+                        "phase": "refreshing_year",
+                        "message": "연간 집계 테이블을 갱신하는 중입니다.",
+                        "completed": len(contents),
+                        "total": len(contents),
+                        "percent": 95,
+                        "run_id": run_id,
+                    }
+                )
             self._repository.refresh_yearly_clip_reports(datetime.fromisoformat(checked_at).year)
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "completed",
+                        "phase": "completed",
+                        "message": f"오늘자 크롤링이 완료되었습니다. 저장된 영상 수: {len(rows)}",
+                        "completed": len(contents),
+                        "total": len(contents),
+                        "percent": 100,
+                        "run_id": run_id,
+                        "row_count": len(rows),
+                    }
+                )
             return rows
         except Exception as exc:
             self._repository.finish_daily_report_run(
@@ -138,6 +232,20 @@ class B2TestReportService:
                 row_count=len(rows),
                 error_message=str(exc),
             )
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "failed",
+                        "phase": "failed",
+                        "message": f"크롤링 실패: {exc}",
+                        "completed": 0,
+                        "total": len(contents),
+                        "percent": 100,
+                        "run_id": run_id,
+                        "error_message": str(exc),
+                        "row_count": len(rows),
+                    }
+                )
             raise
 
     def publish_holder_sheets(

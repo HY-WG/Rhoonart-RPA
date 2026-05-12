@@ -1,0 +1,8 @@
+{
+  "id": 1,
+  "rights_holder_name": "테스트권리사",
+  "email": "rights@example.com",
+  "metabase_embed_url": "http://localhost:3000/public/dashboard/test-uuid",
+  "naver_report_enabled": true,
+  "looker_studio_url": null
+}

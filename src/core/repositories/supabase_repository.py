@@ -46,6 +46,7 @@ _DB_TO_STATUS.update({
 
 
 class SupabaseCreatorRepository(ICreatorRepository):
+    # NOT IMPLEMENTED — stub only. Do not use in production.
     def __init__(self, client) -> None:
         self._client = client
 
@@ -57,6 +58,7 @@ class SupabaseCreatorRepository(ICreatorRepository):
 
 
 class SupabaseWorkRequestRepository(IWorkRequestRepository):
+    # NOT IMPLEMENTED — stub only. Do not use in production.
     def __init__(self, client) -> None:
         self._client = client
 
@@ -71,6 +73,7 @@ class SupabaseWorkRequestRepository(IWorkRequestRepository):
 
 
 class SupabasePerformanceRepository(IPerformanceRepository):
+    # NOT IMPLEMENTED — stub only. Do not use in production.
     def __init__(self, client) -> None:
         self._client = client
 
@@ -233,6 +236,26 @@ class SupabaseLogRepository(ILogRepository):
             "error": entry.error,
             "logs": [],
         }, on_conflict="run_id").execute()
+        if entry.task_id == "C-1":
+            result = entry.result or {}
+            self._client.table("lead_discovery_runs").upsert({
+                "run_id": entry.log_id,
+                "task_id": entry.task_id,
+                "trigger_source": entry.trigger_source,
+                "status": entry.status.value,
+                "discovered_count": int(result.get("discovered") or 0),
+                "upserted_count": int(result.get("upserted") or 0),
+                "tier_a_count": int(result.get("tier_a") or 0),
+                "tier_b_count": int(result.get("tier_b") or 0),
+                "tier_b_potential_count": int(result.get("tier_b_potential") or 0),
+                "tier_c_count": int(result.get("tier_c") or 0),
+                "excluded_count": int(result.get("tier_c") or 0),
+                "drama_titles": result.get("drama_titles") or [],
+                "detail_log": result.get("detail_log") or [],
+                "result_json": result,
+                "started_at": entry.executed_at.isoformat(),
+                "finished_at": now,
+            }, on_conflict="run_id").execute()
 
 
 def _status_to_db(status: EmailSentStatus | str) -> str:

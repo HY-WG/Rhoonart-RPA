@@ -127,6 +127,56 @@ def test_describe_all_risky(registry: ToolRegistry) -> None:
     assert risky_desc["requires_approval"] is True
 
 
+# ── to_anthropic_tool ────────────────────────────────────────────────────
+
+def test_to_anthropic_tool_structure(registry: ToolRegistry) -> None:
+    """to_anthropic_tool() 이 Anthropic API 요구 형식을 반환한다."""
+    tool = registry.get_spec("echo").to_anthropic_tool()
+    assert tool["name"] == "echo"
+    assert "description" in tool
+    assert tool["input_schema"]["type"] == "object"
+    assert "message" in tool["input_schema"]["properties"]
+
+
+def test_to_anthropic_tool_required_fields(registry: ToolRegistry) -> None:
+    """필수 필드(message)가 required 목록에 포함된다."""
+    tool = registry.get_spec("echo").to_anthropic_tool()
+    assert "message" in tool["input_schema"].get("required", [])
+
+
+def test_to_anthropic_tool_optional_not_required(registry: ToolRegistry) -> None:
+    """기본값이 있는 필드(repeat)는 required 에 포함되지 않는다."""
+    tool = registry.get_spec("echo").to_anthropic_tool()
+    required = tool["input_schema"].get("required", [])
+    assert "repeat" not in required
+
+
+# ── to_anthropic_tools ───────────────────────────────────────────────────
+
+def test_to_anthropic_tools_includes_finish(registry: ToolRegistry) -> None:
+    """include_finish=True(기본) 이면 finish 가상 도구가 포함된다."""
+    tools = registry.to_anthropic_tools()
+    names = {t["name"] for t in tools}
+    assert "echo" in names
+    assert "risky_action" in names
+    assert "finish" in names
+
+
+def test_to_anthropic_tools_no_finish(registry: ToolRegistry) -> None:
+    """include_finish=False 이면 finish 가 포함되지 않는다."""
+    tools = registry.to_anthropic_tools(include_finish=False)
+    names = {t["name"] for t in tools}
+    assert "finish" not in names
+
+
+def test_finish_tool_has_valid_schema(registry: ToolRegistry) -> None:
+    """finish 도구의 input_schema 가 유효한 JSON Schema 형식이다."""
+    tools = registry.to_anthropic_tools()
+    finish = next(t for t in tools if t["name"] == "finish")
+    assert finish["input_schema"]["type"] == "object"
+    assert "summary" in finish["input_schema"]["properties"]
+
+
 # ── 실제 definitions 임포트 스모크 테스트 ─────────────────────────────────
 
 def test_import_definitions() -> None:
@@ -137,3 +187,14 @@ def test_import_definitions() -> None:
     assert len(names) >= 9, f"등록된 도구 수가 부족합니다: {names}"
     assert "run_a2_work_approval" in names
     assert "run_c2_cold_email" in names
+
+
+def test_definitions_anthropic_tools_smoke() -> None:
+    """실제 tool_registry 의 to_anthropic_tools() 가 유효한 목록을 반환한다."""
+    from src.agents.tools.definitions import tool_registry
+    tools = tool_registry.to_anthropic_tools()
+    assert len(tools) >= 10  # 9개 도구 + finish
+    for tool in tools:
+        assert "name" in tool
+        assert "description" in tool
+        assert tool["input_schema"]["type"] == "object"

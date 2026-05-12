@@ -1,220 +1,132 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
-import { FileText, Clock, CheckCircle, XCircle, PlusCircle } from "lucide-react";
-
-// ── 타입 ──────────────────────────────────────────────────────────────────────
-type WorkRequest = {
-  id: string;
-  work_title: string;
-  channel_name: string | null;
-  status: "pending" | "approved" | "rejected";
-  requested_at: string;
-  processed_at: string | null;
-  drive_link: string | null;
-};
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle, Clock, FileText, PlayCircle, XCircle } from "lucide-react";
+import { fetchMyWorkRequests } from "@/lib/api";
+import type { WorkRequest } from "@/lib/types";
 
 const statusMeta = {
-  pending: { label: "처리 중", icon: Clock, cls: "text-amber-600 bg-amber-50" },
-  approved: { label: "승인됨", icon: CheckCircle, cls: "text-emerald-600 bg-emerald-50" },
-  rejected: { label: "거절됨", icon: XCircle, cls: "text-red-500 bg-red-50" },
+  pending: { label: "처리 중", icon: Clock, cls: "text-amber-700 bg-amber-50" },
+  approved: { label: "승인 완료", icon: CheckCircle, cls: "text-emerald-700 bg-emerald-50" },
+  rejected: { label: "반려", icon: XCircle, cls: "text-red-600 bg-red-50" },
 } as const;
 
-// ── 훅 ───────────────────────────────────────────────────────────────────────
-async function fetchMyRequests(): Promise<WorkRequest[]> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from("work_requests")
-    .select("id, work_title, channel_name, status, requested_at, processed_at, drive_link")
-    .eq("creator_id", user.id)
-    .order("requested_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as WorkRequest[];
+function getStatusMeta(status: WorkRequest["status"]) {
+  if (status === "approved" || status === "rejected") return statusMeta[status];
+  return statusMeta.pending;
 }
 
-async function submitWorkRequest(workTitle: string): Promise<void> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("로그인이 필요합니다.");
-
-  const { error } = await supabase.from("work_requests").insert({
-    creator_id: user.id,
-    work_title: workTitle.trim(),
-    status: "pending",
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
-  if (error) throw new Error(error.message);
 }
 
-// ── 신청 폼 ──────────────────────────────────────────────────────────────────
-function RequestForm({ onClose }: { onClose: () => void }) {
-  const [workTitle, setWorkTitle] = useState("");
-  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const qc = useQueryClient();
-
-  const submit = useMutation({
-    mutationFn: () => submitWorkRequest(workTitle),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-work-requests"] });
-      setResult({ ok: true, msg: `"${workTitle}" 신청이 접수되었습니다.` });
-      setWorkTitle("");
-    },
-    onError: (e: Error) => setResult({ ok: false, msg: e.message }),
-  });
-
-  return (
-    <div className="bg-white rounded-xl border border-indigo-200 p-5 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-indigo-700">새 작품 사용 신청</h3>
-        <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600">닫기 ×</button>
-      </div>
-      <form
-        onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}
-        className="flex items-end gap-3"
-      >
-        <div className="flex-1 flex flex-col gap-1">
-          <label className="text-xs text-slate-500">작품명</label>
-          <input
-            required
-            value={workTitle}
-            onChange={(e) => setWorkTitle(e.target.value)}
-            placeholder="예: 21세기 대군부인"
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={submit.isPending || !workTitle.trim()}
-          className="px-5 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600 disabled:opacity-50"
-        >
-          {submit.isPending ? "접수 중…" : "신청"}
-        </button>
-      </form>
-      {result && (
-        <p className={`mt-2 text-sm ${result.ok ? "text-emerald-600" : "text-red-500"}`}>
-          {result.ok ? "✓ " : "✗ "}{result.msg}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ── 메인 페이지 ───────────────────────────────────────────────────────────────
 export default function RequestsPage() {
-  const [showForm, setShowForm] = useState(false);
-
-  const { data: requests = [], isLoading, error } = useQuery<WorkRequest[]>({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["my-work-requests"],
-    queryFn: fetchMyRequests,
+    queryFn: fetchMyWorkRequests,
     staleTime: 30_000,
   });
+  const requests = data?.items ?? [];
 
   return (
-    <div className="p-8 max-w-3xl">
-      {/* 헤더 */}
-      <div className="flex items-start justify-between mb-5">
+    <div className="max-w-4xl p-8">
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-indigo-500" />
-            작품 사용 신청
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+            <FileText className="h-6 w-6 text-indigo-600" />
+            작품 사용 신청 진행 현황
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            총 {requests.length}건의 신청 내역
+          <p className="mt-1 text-sm text-slate-500">
+            내 채널의 영상권한 신청 내역을 백엔드 API에서 불러옵니다.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600"
+        <Link
+          href="/portal"
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
-          <PlusCircle className="w-4 h-4" />
-          새 신청
-        </button>
+          <PlayCircle className="h-4 w-4" />
+          내 채널에서 신청하기
+        </Link>
       </div>
 
-      {/* 신청 폼 */}
-      {showForm && <RequestForm onClose={() => setShowForm(false)} />}
-
-      {/* 목록 */}
       {isLoading && (
-        <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">
-          불러오는 중…
+        <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+          신청 내역을 불러오는 중입니다.
         </div>
       )}
+
       {error && (
-        <div className="bg-red-50 rounded-xl border border-red-200 p-6 text-sm text-red-500">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
           오류: {(error as Error).message}
         </div>
       )}
 
-      <div className="space-y-3">
-        {!isLoading && !error && requests.length === 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
-            <FileText className="w-8 h-8 opacity-30" />
-            <p className="text-sm">신청 내역이 없습니다.</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-2 text-sm text-indigo-500 hover:underline"
-            >
-              첫 번째 신청 하기 →
-            </button>
-          </div>
-        )}
+      {!isLoading && !error && requests.length === 0 && (
+        <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white text-slate-500">
+          <FileText className="h-9 w-9 opacity-40" />
+          <p className="text-sm">아직 접수된 영상권한 신청 내역이 없습니다.</p>
+          <Link href="/portal" className="text-sm font-medium text-indigo-600 hover:underline">
+            내 채널에서 첫 신청 진행하기
+          </Link>
+        </div>
+      )}
 
+      <div className="space-y-3">
         {requests.map((req) => {
-          const meta = statusMeta[req.status] ?? statusMeta.pending;
+          const meta = getStatusMeta(req.status);
           const Icon = meta.icon;
-          const [clrText, clrBg] = meta.cls.split(" ");
+          const [textClass, bgClass] = meta.cls.split(" ");
 
           return (
-            <div
+            <article
               key={req.id}
-              className="bg-white rounded-xl border border-slate-200 overflow-hidden"
+              className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="px-5 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`p-2 rounded-lg ${clrBg}`}>
-                    <Icon className={`w-4 h-4 ${clrText}`} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-800 text-sm">{req.work_title}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      신청일: {new Date(req.requested_at).toLocaleDateString("ko-KR")}
-                      {req.processed_at && (
-                        <> · 처리일: {new Date(req.processed_at).toLocaleDateString("ko-KR")}</>
-                      )}
-                    </p>
-                  </div>
+              <div className="flex items-start gap-4">
+                <div className={`rounded-lg p-2 ${bgClass}`}>
+                  <Icon className={`h-4 w-4 ${textClass}`} />
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${meta.cls}`}>
-                    {meta.label}
-                  </span>
-                  {req.status === "approved" && req.drive_link && (
-                    <a
-                      href={req.drive_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-indigo-500 hover:underline"
-                    >
-                      파일 열기 →
-                    </a>
+                <div>
+                  <p className="font-medium text-slate-900">{req.work_title}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    신청일: {formatDate(req.requested_at)}
+                    {req.processed_at ? ` | 처리일: ${formatDate(req.processed_at)}` : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {req.channel_name || "채널명 미입력"}
+                    {req.creator_email ? ` | ${req.creator_email}` : ""}
+                  </p>
+                  {req.status === "rejected" && req.rejection_message && (
+                    <p className="mt-2 max-w-2xl rounded-lg bg-red-50 px-3 py-2 text-xs leading-5 text-red-600">
+                      {req.rejection_message}
+                    </p>
                   )}
                 </div>
               </div>
-              {req.status === "rejected" && (
-                <div className="px-5 py-3 border-t border-red-100 bg-red-50">
-                  <p className="text-xs text-red-600 leading-relaxed">
-                    아쉽게도 참여 심사 결과{req.channel_name ? ` ${req.channel_name} 채널이` : ""} 반려되었습니다.
-                    권리사 측 선정 기준에 따른 결정으로 상세 사유 안내가 어려운 점 양해 부탁드립니다.
-                  </p>
-                </div>
-              )}
-            </div>
+              <div className="flex items-center gap-3">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${meta.cls}`}>
+                  {meta.label}
+                </span>
+                {req.status === "approved" && req.drive_link && (
+                  <a
+                    href={req.drive_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-indigo-600 hover:underline"
+                  >
+                    파일 열기
+                  </a>
+                )}
+              </div>
+            </article>
           );
         })}
       </div>

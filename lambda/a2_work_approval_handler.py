@@ -83,7 +83,9 @@ def handler(event: dict, context) -> dict[str, object]:
         return {"statusCode": 200, "body": "ignored"}
 
     slack_channel_id = slack_event.get("channel", "")
-    if SLACK_APPROVAL_CH and slack_channel_id != SLACK_APPROVAL_CH:
+    source = body.get("source", "")
+    # "portal" 직접 신청은 Slack 채널 필터 없이 통과 (채널 ID 불일치 무관)
+    if source != "portal" and SLACK_APPROVAL_CH and slack_channel_id != SLACK_APPROVAL_CH:
         log.debug("[A-2] 승인 대상 채널이 아니므로 무시: %s", slack_channel_id)
         return {"statusCode": 200, "body": "ignored"}
 
@@ -93,6 +95,8 @@ def handler(event: dict, context) -> dict[str, object]:
         return {"statusCode": 200, "body": "ignored"}
 
     slack_message_ts = slack_event.get("ts", "")
+    # override_email: 포털/수동 테스트용 — 지정 시 시트 조회 없이 이 이메일로 발송
+    override_email = body.get("override_email", "")
     sheets_client, drive_service, log_repo, slack_notifier, email_notifier, supabase_client = _build_deps()
 
     @task_handler(
@@ -117,6 +121,7 @@ def handler(event: dict, context) -> dict[str, object]:
             sender_email=SENDER_EMAIL,
             admin_api_base_url=ADMIN_API_BASE_URL,
             supabase_client=supabase_client,
+            override_email=override_email,
         )
 
     try:

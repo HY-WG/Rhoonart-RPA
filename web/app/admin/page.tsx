@@ -2,129 +2,157 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, CheckCircle2, Clock } from "lucide-react";
 import {
-  fetchAdminOverview,
-  fetchOpsA3Report,
-  fetchOpsB2Report,
-  fetchOpsLeadSummary,
-} from "@/lib/api";
-import type { OpsA3Report, OpsB2Report, OpsLeadSummary } from "@/lib/types";
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
+  ClipboardList,
+  FileWarning,
+  Landmark,
+  Users,
+} from "lucide-react";
+import { fetchAdminOverview } from "@/lib/api";
+import type { PendingItem } from "@/lib/types";
 
-function StatusBadge({ status }: { status: "completed" | "pending" }) {
-  if (status === "completed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-        <CheckCircle2 className="h-3 w-3" />
-        보고 완료
-      </span>
-    );
-  }
+const ICONS = {
+  "work-application": ClipboardList,
+  "rights-relief": FileWarning,
+  "naver-youtube-report": BarChart3,
+  "naver-revenue": Landmark,
+  "lead-summary": Users,
+};
+
+const CARD_BASE =
+  "rounded-lg border border-slate-200 bg-white p-5 hover:border-blue-200 hover:shadow-sm";
+
+function CardHeader({ item, Icon }: { item: PendingItem; Icon: React.ElementType }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-      <Clock className="h-3 w-3" />
-      보고 대기중
-    </span>
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+          <Icon className="h-5 w-5" />
+        </span>
+        <h3 className="font-semibold text-slate-950">{item.title}</h3>
+      </div>
+      <ArrowRight className="h-4 w-4 text-slate-400" />
+    </div>
   );
 }
 
-function B2ReportCard({ data }: { data: OpsB2Report }) {
+function B2ReportCard({ item, Icon }: { item: PendingItem; Icon: React.ElementType }) {
+  const rhs = item.rights_holders ?? [];
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="font-semibold text-slate-950">네이버 클립 &amp; 유튜브 통합 성과보고</h3>
-        <Link href="/admin/reports/naver-clip">
-          <ArrowRight className="h-4 w-4 text-slate-400" />
-        </Link>
-      </div>
-      <p className="mt-1 text-xs text-slate-400">활성 권리사 {data.active_count}개</p>
-      <ul className="mt-4 space-y-2.5">
-        {data.rights_holders.map((rh) => (
-          <li key={rh.name} className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <span className="block text-sm font-medium text-slate-800">{rh.name}</span>
-              <span className="block text-xs text-slate-400">
-                {rh.schedule_days.join(", ")} {rh.schedule_time}
+    <Link key={item.id} href={item.href ?? "/admin/reports/naver-clip"} className={CARD_BASE}>
+      <CardHeader item={item} Icon={Icon} />
+      {rhs.length === 0 ? (
+        <p className="mt-5 text-sm text-slate-400">등록된 권리사 일정이 없습니다.</p>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {rhs.map((rh) => (
+            <li key={rh.name} className="flex items-center justify-between gap-2">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="truncate text-sm font-medium text-slate-800">{rh.name}</span>
+                {rh.schedule && (
+                  <span className="whitespace-nowrap text-xs text-slate-400">{rh.schedule}</span>
+                )}
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  rh.status === "보고 완료"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {rh.status}
               </span>
-            </div>
-            <StatusBadge status={rh.report_status} />
-          </li>
-        ))}
-      </ul>
-    </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {item.status && (
+        <p className="mt-3 text-xs font-medium text-slate-400">{item.status}</p>
+      )}
+    </Link>
   );
 }
 
-function A3ReportCard({ data }: { data: OpsA3Report }) {
+function A3ReportCard({ item, Icon }: { item: PendingItem; Icon: React.ElementType }) {
+  const dates = item.report_dates;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="font-semibold text-slate-950">네이버 클립 채널 인입</h3>
-        <Link href="/admin/naver-work">
-          <ArrowRight className="h-4 w-4 text-slate-400" />
-        </Link>
+    <Link key={item.id} href={item.href ?? "/admin/naver-monthly"} className={CARD_BASE}>
+      <CardHeader item={item} Icon={Icon} />
+      <div className="mt-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-400">당월 보고일</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-900">
+              {dates?.current ?? "-"}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+              dates?.current_sent
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {dates?.current_sent ? "보고 완료" : "보고 대기중"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-400">차월 보고일</p>
+            <p className="mt-0.5 text-sm font-medium text-slate-500">
+              {dates?.next ?? "-"}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+            보고 대기중
+          </span>
+        </div>
       </div>
-      <ul className="mt-4 space-y-3">
-        <li className="flex items-center justify-between gap-3">
-          <div>
-            <span className="block text-xs text-slate-400">당월 보고일</span>
-            <span className="block text-sm font-medium text-slate-800">{data.current_month.label}</span>
-          </div>
-          <StatusBadge status={data.current_month.status} />
-        </li>
-        <li className="flex items-center justify-between gap-3">
-          <div>
-            <span className="block text-xs text-slate-400">차월 보고일</span>
-            <span className="block text-sm font-medium text-slate-800">{data.next_month.label}</span>
-          </div>
-          <StatusBadge status={data.next_month.status} />
-        </li>
-      </ul>
-    </div>
+    </Link>
   );
 }
 
-function LeadSummaryCard({ data }: { data: OpsLeadSummary }) {
+function GenericCard({ item, Icon }: { item: PendingItem; Icon: React.ElementType }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="font-semibold text-slate-950">리드 발굴 요약</h3>
-        <Link href="/admin/videos">
-          <ArrowRight className="h-4 w-4 text-slate-400" />
-        </Link>
-      </div>
-      <p className="mt-4 text-sm text-slate-500">
-        리드 발굴 필요 영상
-        <span className="ml-2 text-2xl font-bold text-slate-950">{data.videos_needing_leads}</span>
-        <span className="ml-1 text-sm text-slate-500">개</span>
+    <Link key={item.id} href={item.href ?? "/admin/videos"} className={CARD_BASE}>
+      <CardHeader item={item} Icon={Icon} />
+      <p className="mt-5 text-sm text-slate-500">
+        {item.metric_label} :{" "}
+        <span className="text-2xl font-bold text-slate-950">
+          {item.count.toLocaleString()}
+        </span>
       </p>
-      <p className="mt-1 text-xs text-slate-400">이용 채널 수 5개 이하 영상 기준</p>
-    </div>
+      {item.status && (
+        <p className="mt-2 text-xs font-medium text-slate-400">{item.status}</p>
+      )}
+    </Link>
   );
-}
-
-function OpsCardSkeleton() {
-  return <div className="h-40 animate-pulse rounded-lg border border-slate-100 bg-slate-50" />;
 }
 
 export default function AdminPage() {
-  const overview = useQuery({ queryKey: ["admin-overview"], queryFn: fetchAdminOverview });
-  const b2 = useQuery({ queryKey: ["ops-b2-report"], queryFn: fetchOpsB2Report });
-  const a3 = useQuery({ queryKey: ["ops-a3-report"], queryFn: fetchOpsA3Report });
-  const lead = useQuery({ queryKey: ["ops-lead-summary"], queryFn: fetchOpsLeadSummary });
+  const overview = useQuery({
+    queryKey: ["admin-overview"],
+    queryFn: fetchAdminOverview,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
+  });
 
   return (
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-950">어드민</h1>
-        <p className="mt-1 text-sm text-slate-500">작품, 채널, 파트너 협업 현황을 관리합니다.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          작품, 권리사 소명, 성과 보고, 수익 보고, 리드 발굴 현황을 관리합니다.
+        </p>
       </div>
 
-      {/* 미결 사항 */}
-      <section className="mb-10">
+      <section>
         <div className="mb-3 flex items-center gap-2">
           <AlertCircle className="h-5 w-5 text-blue-700" />
-          <h2 className="text-lg font-semibold text-slate-900">미결 사항</h2>
+          <h2 className="text-lg font-semibold text-slate-900">운영 카드</h2>
         </div>
         {overview.isLoading && (
           <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
@@ -136,42 +164,17 @@ export default function AdminPage() {
             {(overview.error as Error).message}
           </div>
         )}
-        <div className="grid gap-4 md:grid-cols-3">
-          {overview.data?.pending.map((item) => (
-            <Link
-              key={item.id}
-              href={
-                item.id === "rights-relief"
-                  ? "/admin/work-application"
-                  : item.id === "naver-report"
-                  ? "/admin/reports/naver"
-                  : "/admin/videos"
-              }
-              className="rounded-lg border border-slate-200 bg-white p-5 hover:border-blue-200 hover:shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <h3 className="font-semibold text-slate-950">{item.title}</h3>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
-              </div>
-              <p className="mt-4 text-sm text-slate-500">
-                {item.metric_label} :{" "}
-                <span className="text-2xl font-bold text-slate-950">{item.count}</span>
-              </p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* 운영 현황 */}
-      <section>
-        <div className="mb-3 flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-teal-600" />
-          <h2 className="text-lg font-semibold text-slate-900">운영 현황</h2>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {b2.isLoading ? <OpsCardSkeleton /> : b2.data ? <B2ReportCard data={b2.data} /> : null}
-          {a3.isLoading ? <OpsCardSkeleton /> : a3.data ? <A3ReportCard data={a3.data} /> : null}
-          {lead.isLoading ? <OpsCardSkeleton /> : lead.data ? <LeadSummaryCard data={lead.data} /> : null}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {overview.data?.pending.map((item) => {
+            const Icon = ICONS[item.id as keyof typeof ICONS] ?? AlertCircle;
+            if (item.id === "naver-youtube-report") {
+              return <B2ReportCard key={item.id} item={item} Icon={Icon} />;
+            }
+            if (item.id === "naver-revenue") {
+              return <A3ReportCard key={item.id} item={item} Icon={Icon} />;
+            }
+            return <GenericCard key={item.id} item={item} Icon={Icon} />;
+          })}
         </div>
       </section>
     </div>

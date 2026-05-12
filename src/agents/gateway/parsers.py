@@ -6,7 +6,15 @@ from typing import Any
 
 from .models import TaskEnvelope, TriggerType
 
-_A2_CHANNEL_RE = re.compile(r'채널:\s*["“”]?([^"“”\n]+)["“”]?.*영상\s*사용\s*요청')
+# Slack 메시지에서 채널명을 추출하는 정규식.
+# 따옴표 있는 형식:  채널: "유호영" 의 신규 영상 사용 요청
+# 따옴표 없는 형식:  채널: 유호영 의 신규 영상 사용 요청
+# “ / ”: Slack 이 사용하는 곱슬 따옴표(left/right double quotation mark)
+# "             : 직선 따옴표(straight quote)
+_A2_CHANNEL_RE = re.compile(
+    r"채널:\s*(?:[“”\"]([^“”\"\n]+)[“”\"]|(\S+))"
+    r"\s*의\s*(?:신규\s*)?영상\s*사용\s*요청"
+)
 
 
 def parse_slack_work_approval(
@@ -20,13 +28,16 @@ def parse_slack_work_approval(
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < 2:
-        raise ValueError(f"A-2 Slack message parse failed: expected at least 2 lines, got {len(lines)}")
+        raise ValueError(
+            f"A-2 Slack 메시지 파싱 실패: 줄 수 부족 (필요: 2, 실제: {len(lines)})"
+        )
 
     match = _A2_CHANNEL_RE.search(lines[0])
     if not match:
-        raise ValueError(f"A-2 channel name parse failed: {lines[0]!r}")
+        raise ValueError(f"A-2 채널명 파싱 실패: {lines[0]!r}")
 
-    channel_name = match.group(1).strip()
+    # group(1): 따옴표 있는 채널명 / group(2): 따옴표 없는 채널명
+    channel_name = (match.group(1) or match.group(2)).strip()
     work_title = lines[1].strip()
     return TaskEnvelope(
         task_id="A-2",

@@ -312,8 +312,8 @@ def build_app(service: IntegrationTaskService | None = None) -> FastAPI:
         video = next((item for item in _MOCK_CHANNEL_VIDEOS if item["video_id"] == request.video_id), None)
         if video is None:
             raise HTTPException(status_code=404, detail="video not found")
-        if video["active_channel_count"] < 5:
-            raise HTTPException(status_code=400, detail="lead discovery requires at least 5 active channels")
+        if video["active_channel_count"] > 5:
+            raise HTTPException(status_code=400, detail="lead discovery is only needed when active channels are 5 or fewer")
         return {"run_id": f"C-1-{request.video_id}", "status": "completed", "video": video, "leads": _MOCK_DISCOVERED_LEADS}
 
     @app.get("/api/admin/lead-discovery/{run_id}")

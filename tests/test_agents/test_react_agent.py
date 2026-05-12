@@ -225,20 +225,29 @@ def test_agent_handles_invalid_llm_json() -> None:
 # ── FakeLLMClient ─────────────────────────────────────────────────────────
 
 def test_fake_llm_queue_exhausted_returns_finish() -> None:
-    """응답 큐가 빈 경우 기본 finish JSON 반환."""
+    """응답 큐가 빈 경우 finish tool_use dict 반환."""
     fake = FakeLLMClient([])
     resp = fake.create_message(model="x", max_tokens=100, system="s", messages=[])
-    data = json.loads(resp)
-    assert data["selected_tool"] == "finish"
+    assert resp["type"] == "tool_use"
+    assert resp["name"] == "finish"
 
 
 def test_fake_llm_pops_in_order() -> None:
+    """구 Thought JSON 문자열을 tool_use dict 로 변환하며 순서대로 반환."""
     responses = [
         _thought_json("echo", {"message": "first"}),
         _thought_json("echo", {"message": "second"}),
     ]
     fake = FakeLLMClient(responses)
-    r1 = json.loads(fake.create_message(model="x", max_tokens=100, system="s", messages=[]))
-    r2 = json.loads(fake.create_message(model="x", max_tokens=100, system="s", messages=[]))
-    assert r1["tool_input"]["message"] == "first"
-    assert r2["tool_input"]["message"] == "second"
+    r1 = fake.create_message(model="x", max_tokens=100, system="s", messages=[])
+    r2 = fake.create_message(model="x", max_tokens=100, system="s", messages=[])
+    assert r1["input"]["message"] == "first"
+    assert r2["input"]["message"] == "second"
+
+
+def test_fake_llm_accepts_dict_response() -> None:
+    """dict 형식 응답을 그대로 반환한다 (새 형식)."""
+    fake = FakeLLMClient([{"type": "tool_use", "name": "echo", "input": {"message": "hi"}}])
+    resp = fake.create_message(model="x", max_tokens=100, system="s", messages=[])
+    assert resp["name"] == "echo"
+    assert resp["input"]["message"] == "hi"

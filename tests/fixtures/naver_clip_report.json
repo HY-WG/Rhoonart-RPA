@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "work_title": "테스트작품",
+  "identifier": "test-work-001",
+  "channel_name": "테스트채널",
+  "clip_title": "테스트클립",
+  "view_count": 12345,
+  "like_count": 500,
+  "comment_count": 30,
+  "checked_at": "2026-05-01",
+  "uploaded_at": "2026-04-20",
+  "platform": "naver_clip",
+  "rights_holder_name": "테스트권리사"
+}

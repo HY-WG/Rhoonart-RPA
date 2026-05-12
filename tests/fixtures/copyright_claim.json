@@ -1,0 +1,15 @@
+{
+  "id": "cc-001",
+  "channel_id": null,
+  "channel_name": "파트너채널",
+  "work_id": "1",
+  "work_title": "테스트작품",
+  "right_holder_id": "rh-001",
+  "rights_holders": {"rights_holder_name": "테스트권리사"},
+  "requested_at": "2026-05-01T09:00:00+09:00",
+  "due": "2026-05-08",
+  "completed": false,
+  "official_document_status": "not_requested",
+  "official_document_file_name": null,
+  "official_document_uploaded_at": null
+}

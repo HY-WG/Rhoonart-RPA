@@ -232,6 +232,8 @@ def run(
         "tier_b_potential":  len(tier_bp),
         "tier_c":            len(tier_c),
         "upserted":          upserted,
+        "drama_titles":      crawler.last_drama_titles,
+        "detail_log":        crawler.discovery_debug_log,
     }
 
 

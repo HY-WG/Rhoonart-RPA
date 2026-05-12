@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime
 
 import gspread
 
@@ -17,6 +18,7 @@ from src.core.notifiers.slack_notifier import SlackNotifier
 from src.core.repositories.sheet_repository import (
     SheetLogRepository,
     SheetNaverClipApplicantRepository,
+    naver_settlement_tab_name,
 )
 from src.handlers.a3_naver_clip_monthly import (
     RunMode,
@@ -48,10 +50,7 @@ NAVER_MANAGER_EMAIL = os.environ["NAVER_MANAGER_EMAIL"]
 SENDER_EMAIL = os.environ["SENDER_EMAIL"]
 USE_SES = os.environ.get("USE_SES", "true").lower() == "true"
 
-APPLICANT_TAB = os.environ.get(
-    "NAVER_APPLICANT_TAB",
-    os.environ.get("TAB_NAVER_FORM", "NAVER_APPLICANTS"),
-)
+APPLICANT_TAB = os.environ.get("NAVER_APPLICANT_TAB", "")
 LOG_TAB = os.environ.get("TAB_LOG", "로그 기록")
 
 
@@ -62,8 +61,19 @@ def _build_deps():
     applicant_sheet = client.open_by_key(NAVER_APPLICANT_SHEET_ID)
     log_sheet = client.open_by_key(LOG_SHEET_ID)
 
+    now = datetime.now()
+    applicant_tab = APPLICANT_TAB or naver_settlement_tab_name(now.year, now.month)
+    try:
+        applicant_ws = applicant_sheet.worksheet(applicant_tab)
+    except Exception:
+        applicant_ws = applicant_sheet.add_worksheet(
+            title=applicant_tab,
+            rows=1000,
+            cols=10,
+        )
     applicant_repo = SheetNaverClipApplicantRepository(
-        applicant_sheet.worksheet(APPLICANT_TAB)
+        applicant_ws,
+        spreadsheet=applicant_sheet,
     )
     log_repo = SheetLogRepository(log_sheet.worksheet(LOG_TAB))
     slack_notifier = SlackNotifier(token=SLACK_TOKEN, error_channel=SLACK_ERROR_CHANNEL)
@@ -96,6 +106,9 @@ def handler(event: dict, context) -> dict:
             email_notifier=email_notifier,
             mode=mode,
             manager_email=NAVER_MANAGER_EMAIL,
+            target_year=event.get("target_year"),
+            target_month=event.get("target_month"),
+            holiday_dates=event.get("holiday_dates") or [],
             slack_channel=SLACK_CONFIRM_CHANNEL,
         )
 

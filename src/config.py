@@ -77,7 +77,11 @@ class Settings:
         self.NAVER_FORM_ID = os.environ.get("NAVER_FORM_ID", "")
         self.NAVER_APPLICANT_SHEET_ID = os.environ.get(
             "NAVER_APPLICANT_SHEET_ID",
-            self.NAVER_FORM_ID,
+            self.NAVER_FORM_ID or "1b3TeGlOCuFo_BlAdpteHXSWLz7TbTHBpsmXf72aOrQ8",
+        )
+        self.NAVER_INBOUND_REPORT_SHEET_ID = os.environ.get(
+            "NAVER_INBOUND_REPORT_SHEET_ID",
+            self.NAVER_APPLICANT_SHEET_ID,
         )
         self.NAVER_EXCEL_SHEET_ID = os.environ.get("NAVER_EXCEL_SHEET_ID", "")
         self.NAVER_MANAGER_EMAIL = os.environ.get("NAVER_MANAGER_EMAIL", "")
@@ -87,6 +91,11 @@ class Settings:
         )
 
         self.YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
+        self.TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")        # themoviedb.org 무료 API key
+        self.KMDB_API_KEY = os.environ.get("KMDB_API_KEY", "")        # kmdb.or.kr 공공 API key (무료 신청)
+        self.OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "")        # omdbapi.com API key
+        self.NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "")  # developers.naver.com (무료)
+        self.NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "")
         self.C1_GENRES = os.environ.get("C1_GENRES", "\uc608\ub2a5,\ub4dc\ub77c\ub9c8/\uc601\ud654")
         self.C1_MIN_MONTHLY_VIEWS = _as_int(
             os.environ.get("C1_MIN_MONTHLY_VIEWS"),

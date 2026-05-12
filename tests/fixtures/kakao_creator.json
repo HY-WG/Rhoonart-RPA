@@ -1,0 +1,10 @@
+{
+  "id": 1,
+  "creator_name": "테스트크리에이터",
+  "contact_email": "creator@example.com",
+  "kakao_channel": "@testchannel",
+  "phone_number": "010-1234-5678",
+  "status": "pending",
+  "created_at": "2026-05-01T00:00:00+09:00",
+  "updated_at": "2026-05-01T00:00:00+09:00"
+}

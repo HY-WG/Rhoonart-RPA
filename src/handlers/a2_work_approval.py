@@ -98,13 +98,24 @@ def run(
     admin_api_base_url: str = "",
     requested_at: Optional[datetime] = None,
     supabase_client: Optional[Any] = None,
+    override_email: str = "",
 ) -> dict[str, Any]:
-    """A-2 작품 사용요청 승인 자동화를 실행한다."""
+    """A-2 작품 사용요청 승인 자동화를 실행한다.
+
+    Args:
+        override_email: 지정 시 크리에이터 시트 조회 없이 이 이메일로 승인 메일을 발송한다.
+                        테스트/포털 직접 신청 전용 — 프로덕션 Slack 트리거에서는 사용하지 않는다.
+    """
     requested_at = requested_at or datetime.now(KST)
 
     channel_name, work_title = parse_slack_message(slack_message_text)
-    applicant_email = _lookup_creator_email(sheets_client, creator_sheet_id, channel_name)
-    log.info("[A-2] 신청자 이메일 조회 완료: %s -> %s", channel_name, applicant_email)
+
+    if override_email:
+        applicant_email = override_email.strip()
+        log.info("[A-2] override_email 사용 (시트 조회 생략): %s", applicant_email)
+    else:
+        applicant_email = _lookup_creator_email(sheets_client, creator_sheet_id, channel_name)
+        log.info("[A-2] 신청자 이메일 조회 완료: %s -> %s", channel_name, applicant_email)
 
     file_id, file_name, file_url = _search_drive_file(drive_service, drive_folder_id, work_title)
     log.info("[A-2] Drive 파일 발견: %s (id=%s)", file_name, file_id)

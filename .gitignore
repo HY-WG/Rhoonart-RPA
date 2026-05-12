@@ -24,3 +24,5 @@ tmp_run_*.py
 tmp_server*
 tmp_dashboard*
 tmp_b2*
+
+.local-tools/
